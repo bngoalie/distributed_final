@@ -1,4 +1,6 @@
-distributed_final
+Ben Glickman and Ethan Bennis
+CS437 Distributed Systems
+Final Project
 =================
 
-Distributed Chat System - Distributed Systems Final Project
+Distributed Chat Service
