@@ -1,0 +1,67 @@
+Client:
+    structures:
+        struct string_node {
+            char[MAX_STRING_LENGTH] string;
+            string_node *next_node;
+        } string_node;
+
+        struct line_node {
+            char[MAX_LINE_LENGTH] message;
+            string_node liker_list_head; // Consider a count instead of linked_list.
+            lamport_timestamp lts;
+            line_node *next_node;
+        } line_node;
+
+        struct {
+            int counter;
+            int server_id;
+            int server_seq; // Determine necessity.
+        } lamport_timestamp;
+
+    persistent (global) variables:
+        char[MAX_CHAT_ROOM_NAME] room_name;
+        char[MAX_USERNAME] username;
+        char[MAX_SPREAD_GROUP_NAME] current_server_group_name; // TODO: consider saving as int.
+        string_node username_ll_head;
+        line_node *lines_head;
+        line_node *lines_tail;
+        char[NUM_OF_SERVERS][MAX_SERVER_NAME] daemon_names;
+
+    some logic:
+        connecting to server:
+            sp_connect(private_name=NULL, spread_name = daemon_names[server_num])
+            current_server_group_name = function for creating spread group();
+            sp_join(lobby group attained from function for creating spread groups)
+            if (username != "") {
+                send_username_to_server(username);
+            }
+        joining a chat room:
+            check if has username
+                sp_join(group attained from appropriate function)
+                if (room_name != "") {
+                    sp_leave(appropriate_function(room_name))
+                    // TODO: consider leaving lobby.
+                    clear data structures representing (old) chat room.
+                }
+                send_join_update_to_server(current_server_group_name);
+        requesting chat history:
+            check if room_name != ""
+                send_history_request(current_server_group_name, room_name);
+        change_username:
+            set username
+            if (current_server_group_name != "")
+                send_username_update(current_server_group_name, room_name, username);
+        append:
+            if (room_name != "")
+                send_append(current_server_group_name, room_name, message);
+        like/unlike:
+            if (room_name != "" && line_num <=25 && line_num > 0)
+                line_node *line_node_itr = lines_head;
+                for i = 0 to given line number && line_node_itr != null
+                    line_node_itr = line_node_itr->next_node;
+                if (line_node_itr != NULL)
+                    send_like/unlike(current_server_group_name, room_name, line_node_itr->lts);
+        view:
+            if (current_server_group_name != "")
+                send_view_request(current_server_group_name);
+                
