@@ -35,6 +35,7 @@ typedef struct {
 
 typedef struct line_node {
     char[MAX_LINE_LENGTH] message;
+    char[MAX_USERNAME_LENGTH] poster;
     username_node liker_list_head; // Consider using a counter
     lamport_timestamp lts;
     line_node *next_node;
