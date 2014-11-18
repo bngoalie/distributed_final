@@ -1,24 +1,5 @@
 Client:
-    structures:
-        struct string_node {
-            char[MAX_STRING_LENGTH] string;
-            string_node *next_node;
-        } string_node;
-
-        struct line_node {
-            char[MAX_LINE_LENGTH] message;
-            string_node liker_list_head; // Consider a count instead of linked_list.
-            lamport_timestamp lts;
-            line_node *next_node;
-        } line_node;
-
-        struct {
-            int counter;
-            int server_id;
-            int server_seq; // Determine necessity.
-        } lamport_timestamp;
-
-    persistent (global) variables:
+      persistent (global) variables:
         char[MAX_CHAT_ROOM_NAME] room_name;
         char[MAX_USERNAME] username;
         char[MAX_SPREAD_GROUP_NAME] current_server_group_name; // TODO: consider saving as int.
@@ -64,4 +45,12 @@ Client:
         view:
             if (current_server_group_name != "")
                 send_view_request(current_server_group_name);
-                
+               
+
+Main Loop structure: 
+
+
+
+
+
+
