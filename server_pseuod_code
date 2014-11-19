@@ -1,0 +1,46 @@
+receiving like update:
+    check payload.lts, chat_room
+    retrieve the lines list for that chat room
+    iterate through list until find where the associated line should be in the list according to the lts.
+    if don't find appropriate line
+        then add it to the list, but set the append update pointer to null
+    else (find appropriate line)
+        check if like update's username is is in the list of likers
+            if true, then check if update's lts is after the current like update's lts
+                if true, then starting at the current like update's node (use pointer to the node in the list of update nodes), search for placement in list of updates. 
+                         then write update to disk?
+                         then send client-to-server update to clients (via the spread group name for the chat room)
+
+                else, we exit without saving the update. it is stale, we do not need it. 
+            else, then create new like_node for this update's username. 
+                  then write update to disk?
+                  then send client-to-server update to clients (via the spread group name for the chat room)
+
+receiving append update:
+    check chat_room
+    retrieve lines list for that chat room
+    iterate through list of lines
+    if already exists, do nothing (this shouldn't happen though...)
+    else insert into list
+         then write update to disk?
+         then  send client-to-server update to clients
+
+receiving join/leave updates
+    check chat_room
+    retrieve client_node list
+    if client exists in list of clients
+        check if received update is causally newer, add to update queue if true
+    if does not exist in list of clients, create new client_node, add to end of list
+
+
+after processing any update, before writing it to disk, or before disposing of it, we need to check it's server_seq against an array of the largest server_seqs's we have received from each server
+
+
+important variables:
+
+
+int server_seqs[5]; // Initialized to zeroes.
+
+room_node room_list_head; // List of known rooms that clients are in or at one time had clients in.
+
+update_node update_list_head;
