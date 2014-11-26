@@ -36,6 +36,7 @@ FILE        *fd = NULL;
 
 room_node room_list_head; // Should I make this the lobby?
 update_node update_list_head;
+update_node *update_list_tail;
 
 /* TODO: Intent is to keep traack of updates received from each server
  * could be simply replaced with an int array for seqs, but need to update only when receive an 
@@ -54,7 +55,8 @@ void main(int argc, char *argv[]) {
 
     /* Set up list of updates */
     update_list_head.next = NULL;
-    
+    update_lsit_tail = &update_list_head;    
+
     /* TODO: Read last known state from disk*/
 
 
@@ -83,6 +85,17 @@ void main(int argc, char *argv[]) {
     /* TODO: join server_group and personal_group */
 
 
+}
+
+int add_udpate_to_queue(update update, update_node *start, update_node *end) {
+    if (start == NULL) {
+        start = &update_list_head;
+    }     
+    if (end == NULL) {
+        end = &upate_list_tail;
+    }
+    
+    /* compare_lts(lts1, lts2)*/
 }
 
 static void Usage(int argc, char *argv[])

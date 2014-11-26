@@ -85,5 +85,4 @@ typedef struct room_node {
  * TODO: if end is set to null, default to end of queue (or just ignore it) */
 int add_udpate_to_queue(update update, update_node *start, update_node *end);
 
-
 #endif
