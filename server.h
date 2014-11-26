@@ -7,7 +7,7 @@
  */
 
 #ifndef CHAT_SERVER_H
-#define
+#define CHAT_SERVER_H
 
 typedef struct {
     int counter;
