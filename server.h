@@ -40,7 +40,7 @@ typedef struct line_node {
 } line_node;
 
 typedef struct room_node {
-    char chat_room[MAX_CHAT_ROOM_LENGTH];
+    char chat_room[MAX_ROOM_NAME_LENGTH];
     /* TODO: consider char[] for spread group for chat room isntead of recomputing it everytime want to send message to clients*/
     struct room_node *next;
     /* TODO: Determine if a tail pointer would be beneficial. */

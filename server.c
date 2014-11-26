@@ -18,6 +18,7 @@
 
 #define MAX_MEMBERS     10
 #define MAX_GROUPS      MAX_MEMBERS
+#define DEBUG           0
 
 char	    User[80];
 char        Spread_name[80];
@@ -46,6 +47,7 @@ update_node *most_recent_server_updates[5]; // used for checking most recent seq
 
 static	void	    Usage( int argc, char *argv[] );
 static  void        Print_help();
+static  void        Bye();
 
 void main(int argc, char *argv[]) {
 
@@ -55,7 +57,7 @@ void main(int argc, char *argv[]) {
 
     /* Set up list of updates */
     update_list_head.next = NULL;
-    update_lsit_tail = &update_list_head;    
+    update_list_tail = &update_list_head;    
 
     /* TODO: Read last known state from disk*/
 
@@ -92,7 +94,7 @@ int add_udpate_to_queue(update update, update_node *start, update_node *end) {
         start = &update_list_head;
     }     
     if (end == NULL) {
-        end = &upate_list_tail;
+        end = &update_list_tail;
     }
     
     /* compare_lts(lts1, lts2)*/
