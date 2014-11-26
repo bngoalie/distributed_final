@@ -1,5 +1,3 @@
-#ifndef CHAT_SERVER_H
-#define
 /*
  * server.h
  *
@@ -7,6 +5,9 @@
  * CS437 - Distributed Systems
  * Johns Hopkins University
  */
+
+#ifndef CHAT_SERVER_H
+#define
 
 typedef struct {
     int counter;
