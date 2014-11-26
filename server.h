@@ -37,7 +37,7 @@ typedef struct line_node {
     update_node *append_update_node;
     liker_node likers_list_head; // TODO: consider keeping this list sorted, so could use a tail pointer to quickly check if the username already is in list.
     struct line_node *next;   
-}
+} line_node;
 
 typedef struct room_node {
     char chat_room[MAX_CHAT_ROOM_LENGTH];
