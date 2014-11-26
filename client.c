@@ -31,6 +31,8 @@ int main(){
     // Initialize event handling system
     E_init(); 
     E_attach_fd(0, READ_FD, parse_input, 0, NULL, LOW_PRIORITY);
+    // TODO: Check if this needs to be handled when we actually connect:
+    E_attach_fd(mbox, READ_FD, parse_update, 0, NULL, HIGH_PRIORITY);
     E_handle_events();
 }
 
@@ -57,7 +59,7 @@ void parse_input(){
             join_chat_room(&input[2]); 
             break;
         case 'a':   // Append line
-            append(&input[2]);
+            append_line(&input[2]);
             break;
         case 'l':   // Like line
             like_line(atoi((char *)&input[2]), true);
@@ -81,6 +83,11 @@ void parse_input(){
     fflush(stdout);
 }
 
+/* Parse update from server */
+void parse_update(){
+
+}
+
 /* Connect to server with given server_id */
 void connect_to_server(int new_id){
     // Local vars
@@ -101,7 +108,7 @@ void connect_to_server(int new_id){
         // Disconnect if already on a server 
         if(connected){
             SP_disconnect(mbox);
-            connect = 0;
+            connected = 0;
         }
         // Connect to Spread daemon
         printf("Connecting to server %d\n...", server_id);
@@ -117,15 +124,16 @@ void connect_to_server(int new_id){
         if(ret != 0){
             SP_error(ret);
             printf("Error: unable to join lobby group for server %d\n", server_id);
-        else{
+        }else{
+            // Indicate success
             connected = true;
             printf("Successfully connected to server %d\n", server_id);
         }
-    } else {
+    }else{
         printf("Error: invalid server ID\n");
     }
 }
-pread_name
+
 /* Join chat room with given room_name */
 void join_chat_room(char *room_name){
     int     ret;    
@@ -136,11 +144,11 @@ void join_chat_room(char *room_name){
  
     // Leave current room group // TODO: join first, then leave?
     get_lobby_group(server_id, lobby);
-    if(!strcmp(&room_group, lobby)) // don't leave lobby
+    if(!strcmp(&room_group[0], lobby)) // don't leave lobby
          SP_leave(mbox, &room_group);
  
     // Join new room group
-    get_room_group(room_name, &room_group);
+    get_room_group(server_id, room_name, &room_group);
     ret = SP_join(mbox, &room_group);
     if(ret != 0){
         SP_error(ret);

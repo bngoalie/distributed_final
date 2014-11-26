@@ -1,4 +1,4 @@
-/* server.h
+/* support.h
  *
  * Ben Glickman and Ethan Bennis
  * CS437 - Distributed Systems
@@ -7,14 +7,54 @@
 
 #ifndef SUPPORT_H
 #define SUPPORT_H
+/* CONSTANT DEFINITIONS */
 
-/* DEFINITIONS */
 #define SPREAD_SERVER_GROUP "server_group"
 #define PORT 10010
+#define MAX_USERNAME_LENGTH     20
+#define MAX_ROOM_NAME_LENGTH    20
+#define MAX_LINE_LENGTH         80
 
 /* TYPE DEFINITIONS */
 
-// TODO: Move server structs over (if also used by client)
+typedef struct {
+    int counter;
+    int server_id;
+    int server_seq;
+} lamport_timestamp;
+
+typedef struct {
+    char payload[MAX_LINE_LENGTH];
+} update_payload;
+
+typedef struct {
+    char message[MAX_LINE_LENGTH];
+} append_payload;
+#define APPEND_PAYLOAD_SIZE sizeof(append_payload)
+
+typedef struct {
+    int toggle; // 0 for unlike, 1 for like
+    lamport_timestamp lts; // We index messages by lts, not a global line number (at least for now).
+} like_payload;
+#define LIKE_PAYLOAD_SIZE sizeof(like_payload)
+
+
+typedef struct {
+    int toggle; // 0 for leave, 1 for join
+} join_payload;
+#define JOIN_PAYLOAD_SIZE sizeof(join_payload)
+
+
+typedef struct {
+    int type;
+    lamport_timestamp lts;
+    char username[MAX_USERNAME_LENGTH];
+    char chat_room[MAX_ROOM_NAME_LENGTH];
+    update_payload payload;
+} update;
+
+#define UPDATE_SIZE_WITHOUT_PAYLOAD = sizeof(update)-sizeof(update_payload)
+
 
 /* FUNCTION PROTOTYPES */
 
@@ -26,5 +66,7 @@ int compare_lts(lamport_timestamp lts1, lamport_timestamp lts2);
 void get_single_server_group(int server_id, char *group);
 
 void get_room_group(int server_id, char *room_name, char *room_group);
+void get_lobby_group(int server_id, char *group);
+
 
 #endif

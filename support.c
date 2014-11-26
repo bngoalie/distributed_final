@@ -1,6 +1,6 @@
 /*
  * support.c
- * Support functions for client & server
+ * Support functions for both client & server
  *
  * Ben Glickman and Ethan Bennis
  * CS437 - Distributed Systems
@@ -39,4 +39,9 @@ void get_room_group(int server_id, char *room_name, char *room_group) {
     get_single_server_group_name(server_id, room_group);
     sprintf(room_group, "%s-", room_group);
     strcat(room_group, room_name); 
+}
+
+void get_lobby_group(int server_id, char *group){
+    char lobby_str[10] = "lobby"; 
+    // TODO: finish this fxn.
 }
