@@ -22,7 +22,8 @@
 char	    User[80];
 char        Spread_name[80];
 char        Private_group[MAX_GROUP_NAME];
-char        group[MAX_GROUP_NAME];
+char        server_group[MAX_GROUP_NAME];
+char        personal_group[MAX_GROUP_NAME];
 mailbox     Mbox;
 int	        Num_sent;
 struct      timeval start_time;
@@ -42,6 +43,9 @@ update_node update_list_head;
  * This could evolve into some kind of sliding window mechnism liken that used in ex1 and ex2*/
 update_node *most_recent_server_updates[5]; // used for checking most recent seq from each server? TODO: replace 5 with macro. 
 
+static	void	    Usage( int argc, char *argv[] );
+static  void        Print_help();
+
 void main(int argc, char *argv[]) {
 
     /* Set up list of rooms (set up the lobby) */
@@ -54,5 +58,91 @@ void main(int argc, char *argv[]) {
     /* TODO: Read last known state from disk*/
 
 
+    /* Connect to spread daemon */
+    /* Local vars */
+    int	    ret;
+    sp_time test_timeout;
 
+    /* Set timeouts */
+    test_timeout.sec = 0;
+    test_timeout.usec = 100000;
+    
+    /* Parse arguments, display usage if invalid */
+    Usage(argc, argv);
+
+    /* Connect to spread group */
+    ret = SP_connect_timeout( Spread_name, User, 0, 1, &Mbox, Private_group, test_timeout );
+    if(ret != ACCEPT_SESSION) {
+        SP_error(ret);
+        Bye();
+    }
+    if (DEBUG) {
+        printf("User: connected to %s with private group %s\n", Spread_name, Private_group);
+    }
+
+    /* TODO: join server_group and personal_group */
+
+
+}
+
+static void Usage(int argc, char *argv[])
+{
+    /* TODO: consider just passing NULL as User when connecting to daeomn, 
+     * or a naming scheming to designate servers by there id's. 
+     * Probably not necessary, because servers should connect to different daemons. */
+	sprintf( User, "bglickm1-server" );
+	sprintf( Spread_name, PORT);
+    sprintf( server_group, SPREAD_SERVER_GROUP);
+
+
+    if (argc != 3) {
+        Print_help();
+    } else {
+        process_index   = atoi(argv[1]);    // Process index
+        num_processes   = atoi(argv[2]);    // Number of processes
+
+        /* Set name of group where this server is only member */
+        get_single_server_group(process_index, &personal_group);
+        
+
+        /* Check number of processes */
+        if(num_processes > MAX_MEMBERS) {
+            perror("mcast: arguments error - too many processes\n");
+            exit(0);
+        }
+        /* Open file writer */
+        /* TODO: should either open file writer after reading from file 
+         * (which this function does not guarantee on its own) or create
+         * some kind of naming scheme based on time. but then how know 
+         * file name to open? perhaps with another file that is a table
+         * of sorts. 
+         * OR, just make file write append instead of overwrite. */
+        char file_name[15];
+        sprintf(file_name, "%d", process_index);
+        /* TODO: currently opens file for "appending" */
+        if((fd = fopen(strcat(file_name, ".out"), "a")) == NULL) {
+            perror("fopen failed to open file for writing");
+            exit(0);
+        }
+    }
+}
+
+static void Print_help()
+{
+    printf("Usage: server <process_index> <num_of_processes>\n");
+    exit(0);
+}
+
+static void	Bye()
+{
+    printf("Closing file.\n");
+
+    if (fd != NULL) {
+        fclose(fd);
+        fd = NULL;
+    }
+
+	printf("\nExiting mcast.\n");
+	SP_disconnect( Mbox );
+	exit( 0 );
 }

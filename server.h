@@ -79,4 +79,12 @@ typedef struct room_node {
     line_node lines_list_head;
     line_node *twenty_fifth_oldest_line; // Consider instead implementing a doubly-linked list so can count from end? 
 } room_node;
+
+
+/* The start node will be one behind where it actually wants to start looking,
+ * because list has a sentinal node used of looking one node ahead. 
+ * TODO: if end is set to null, default to end of queue (or just ignore it) */
+int add_udpate_to_queue(update update, update_node *start, update_node *end);
+
+
 #endif
