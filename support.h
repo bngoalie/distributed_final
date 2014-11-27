@@ -7,10 +7,16 @@
 
 #ifndef SUPPORT_H
 #define SUPPORT_H
+
+/* INCLUDES */
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 /* CONSTANT DEFINITIONS */
 
 #define SPREAD_SERVER_GROUP "server_group"
-#define PORT 10010
+#define PORT "10010"
 #define MAX_USERNAME_LENGTH     20
 #define MAX_ROOM_NAME_LENGTH    20
 #define MAX_LINE_LENGTH         80

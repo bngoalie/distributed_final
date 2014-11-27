@@ -42,7 +42,7 @@ void parse_input(){
     char    input[100];   
  
     // Clear old input, get new input from stdin
-    for(int i=0; i < sizeof(input); i++) 
+    for(unsigned int i=0; i < sizeof(input); i++) 
         input[i] = 0;
     if(fgets(input, 130, stdin) == NULL)
         close();
@@ -119,8 +119,8 @@ void connect_to_server(int new_id){
             printf("Error: unable to connect to server %d\n", server_id);
         }
         // Join lobby group
-        get_lobby_group(server_id, &room_group); // lobby group needs to have a distinct name
-        ret = SP_join(mbox, &room_group);
+        get_lobby_group(server_id, &room_group[0]); // lobby group needs to have a distinct name
+        ret = SP_join(mbox, &room_group[0]);
         if(ret != 0){
             SP_error(ret);
             printf("Error: unable to join lobby group for server %d\n", server_id);
@@ -137,7 +137,7 @@ void connect_to_server(int new_id){
 /* Join chat room with given room_name */
 void join_chat_room(char *room_name){
     int     ret;    
-    char*   lobby;
+    char*   lobby = "";
 
     // TODO: Message server to indicate room change
     
@@ -145,11 +145,11 @@ void join_chat_room(char *room_name){
     // Leave current room group // TODO: join first, then leave?
     get_lobby_group(server_id, lobby);
     if(!strcmp(&room_group[0], lobby)) // don't leave lobby
-         SP_leave(mbox, &room_group);
+         SP_leave(mbox, &room_group[0]);
  
     // Join new room group
-    get_room_group(server_id, room_name, &room_group);
-    ret = SP_join(mbox, &room_group);
+    get_room_group(server_id, room_name, &room_group[0]);
+    ret = SP_join(mbox, &room_group[0]);
     if(ret != 0){
         SP_error(ret);
         printf("Error: unable to join lobby group for server %d\n", server_id);
@@ -164,24 +164,27 @@ void join_chat_room(char *room_name){
 /* Change username */
 void change_username(char *new_username){
     // Verify new name actually is new
-    if(strcmp(&username, new_username)){
+    if(strcmp(&username[0], new_username)){
         // Set local username
-        strcpy(&username, new_username);
+        strcpy(&username[0], new_username);
         // Send new username to server
         send_username_update();
     }else{
-        printf("Error: username is already %s", &username);
+        printf("Error: username is already %s", &username[0]);
     }
 }
 
 /* Append new line to current chat room */
 void append_line(char *new_line){
-
+    // TODO: implement
+    printf("Placeholder - appending new line %s", new_line);
 }
 
 /* Set like status for line number */
 void like_line(int line_num, bool like){ 
     // TODO: message update to server
+    printf("Placeholder - setting like status of line %d to %s", 
+        line_num, like ? "true" : "false");
 }
 
 /* Send local username to server */

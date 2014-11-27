@@ -49,7 +49,7 @@ static	void	    Usage( int argc, char *argv[] );
 static  void        Print_help();
 static  void        Bye();
 
-void main(int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
 
     /* Set up list of rooms (set up the lobby) */
     room_list_head.twenty_fifth_oldest_line = NULL;
@@ -86,7 +86,6 @@ void main(int argc, char *argv[]) {
 
     /* TODO: join server_group and personal_group */
 
-
 }
 
 int add_udpate_to_queue(update update, update_node *start, update_node *end) {
@@ -94,10 +93,11 @@ int add_udpate_to_queue(update update, update_node *start, update_node *end) {
         start = &update_list_head;
     }     
     if (end == NULL) {
-        end = &update_list_tail;
+        end = &update_list_tail[0];
     }
     
     /* compare_lts(lts1, lts2)*/
+    return 0;
 }
 
 static void Usage(int argc, char *argv[])
@@ -117,7 +117,7 @@ static void Usage(int argc, char *argv[])
         num_processes   = atoi(argv[2]);    // Number of processes
 
         /* Set name of group where this server is only member */
-        get_single_server_group(process_index, &personal_group);
+        get_single_server_group(process_index, &personal_group[0]);
         
 
         /* Check number of processes */

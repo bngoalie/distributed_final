@@ -1,6 +1,6 @@
 CC=gcc
 LD=gcc
-CFLAGS = -c -std=c99 -g -w #-Wall -Wextra -pedantic -g 
+CFLAGS = -c -std=c99 -g -Wall -Wextra -pedantic -g 
 CPPFLAGS=-I. -I ./include
 SP_LIBRARY_DIR=.
 
