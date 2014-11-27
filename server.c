@@ -170,25 +170,27 @@ update_node * add_udpate_to_queue(update *update, update_node *start, update_nod
         end = &update_list_tail;
     }
     
-    if (compare_lts((start->update).lts, update->lts) >= 0) {
+    if (compare_lts(start->lts, update->lts) >= 0) {
         // If the starting node is greater than the update to be added, than the update cannot be added. 
         return NULL;
     }
 
     /* TODO: ensure that logic start != end is correct. */
-    while (start != end && start->next != NULL && compare_lts(update->lts, (start->next->update).lts) < 0) {
+    while (start != end && start->next != NULL && compare_lts(update->lts, start->next->lts) < 0) {
         start = start->next;
     }   
     
     /* If to be inserted at end of list, or can be validly inserted elsewhere 
-     * between before (inclusive) the end */ 
-    if (start->next == NULL || compare_lts(update->lts, (start->next->update).lts) < 0) {
+     * between before (inclusive) the end */
+    // TODO: ***** If node exists, but update pointer is NULL, memcopy new update; 
+    if (start->next == NULL || compare_lts(update->lts, start->next->lts) < 0) {
         update_node *new_node = NULL;
         if ((new_node = malloc(sizeof(update_node))) == NULL) {
             perror("error malloc new node.");
             Bye();           
         }
-        memcpy(&(new_node->update), update, sizeof(*update));
+        // TODO: ***** Malloc new update for memcpy
+        memcpy(&(new_node->update), update, isizeof(*update));
         new_node->next = start->next;
         start->next = new_node;
         return new_node;

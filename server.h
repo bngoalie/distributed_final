@@ -19,6 +19,7 @@
 
 typedef struct update_node {
     update update;
+    lamport_timestamp lts;
     struct update_node *next;
 } update_node;
 
