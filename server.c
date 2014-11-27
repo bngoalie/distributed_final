@@ -89,7 +89,7 @@ void main(int argc, char *argv[]) {
 
 }
 
-int add_udpate_to_queue(update update, update_node *start, update_node *end) {
+int add_udpate_to_queue(update *update, update_node *start, update_node *end) {
     if (start == NULL) {
         start = &update_list_head;
     }     
@@ -97,6 +97,22 @@ int add_udpate_to_queue(update update, update_node *start, update_node *end) {
         end = &update_list_tail;
     }
     
+    /* TODO: ensure that logic start != end is correct. */
+    while (start != end && start->next != NULL && compare_lts(update->lts, (start->next->update).lts) < 0) {
+        start = start->next;
+    }   
+    
+    if (compare_lts(update->lts, (start->next->update).lts) != 0) {
+        update_node *new_node = NULL;
+        if ((new_node = malloc(sizeof(update_node))) == NULL) {
+            perror("error malloc new node.");
+            Bye();           
+        }
+        memcpy(&(new_node->update), update, sizeof(update));
+        new_node->next = start->next;
+        start->next = new_node;
+    }
+
     /* compare_lts(lts1, lts2)*/
 }
 

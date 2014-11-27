@@ -54,6 +54,6 @@ typedef struct room_node {
 /* The start node will be one behind where it actually wants to start looking,
  * because list has a sentinal node used of looking one node ahead. 
  * TODO: if end is set to null, default to end of queue (or just ignore it) */
-int add_udpate_to_queue(update update, update_node *start, update_node *end);
+int add_udpate_to_queue(update *update, update_node *start, update_node *end);
 
 #endif
