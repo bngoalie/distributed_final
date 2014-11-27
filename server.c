@@ -88,6 +88,47 @@ int main(int argc, char *argv[]) {
 
 }
 
+void handle_like_update(update *update) {
+    room_node *room_node = get_chat_room_node(update->chat_room);
+    // TODO:*****check if room_node is NULL. then the chat room DNE
+    line_node *line_node_itr = lines_list_head;
+    /* TODO: if make lines_list doubly linked, iterate from the back, as this is more likely where likes will occur */
+    while (line_node_itr->next != NULL && compare_lts((line_node_itr->next->append_update_node->update).lts, update->lts) < 0) {
+        line_node_itr = line_node_itr->next;
+    }
+    if (line_node_itr->next == NULL) {
+        /* The line does not exist yet. TODO: create the line_node, set append_update to null, add this like update*/
+    
+    } else if (compare_lts((line_node_itr->next->append_update_node->update).lts, update->lts) == 0) {
+        /* found the correct line in line_node_itr->next*/
+        liker_node * liker_node = get_liker_node(line_node_itr->next);
+        if (liker_node == NULL) {
+            /* need to create a new liker_node to append on end of list
+             * for new like or unlike */ 
+        } else if (/*TODO: check if is stale update */){
+            /* TODO: update liker_node*/
+        }
+    }
+}
+
+/* Currently returns the liker_node associated with the given line_node. */
+liker_node * get_liker_node(line_node *line_node) {
+    liker_node *liker_list_itr = line_node->likers_list_head;
+    while (liker_list_itr->next != NULL 
+               && strcmp((liker_list_itr->next->like_update_node->update).username, (line_node->append_update_node->update).username) != 0) {
+        liker_list_itr = liker_list_itr->next;
+    } 
+    return like_list_itr->next;
+}
+
+room_node * get_chat_room_node(char *chat_room) {
+    room_node *itr = &room_list_head;
+    while (itr != NULL && strcmp(itr->chat_room, chat_room) != 0) {
+        itr = itr->next;
+    }
+    return itr;
+}
+
 int add_udpate_to_queue(update *update, update_node *start, update_node *end) {
     if (start == NULL) {
         start = &update_list_head;
@@ -107,12 +148,12 @@ int add_udpate_to_queue(update *update, update_node *start, update_node *end) {
             perror("error malloc new node.");
             Bye();           
         }
-        memcpy(&(new_node->update), update, sizeof(update));
+        memcpy(&(new_node->update), update, sizeof(*update));
         new_node->next = start->next;
         start->next = new_node;
+        return 1;
     }
 
-    /* compare_lts(lts1, lts2)*/
     return 0;
 }
 
