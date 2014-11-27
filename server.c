@@ -97,17 +97,34 @@ void handle_like_update(update *update) {
         line_node_itr = line_node_itr->next;
     }
     if (line_node_itr->next == NULL) {
-        /* The line does not exist yet. TODO: create the line_node, set append_update to null, add this like update*/
-    
-    } else if (compare_lts((line_node_itr->next->append_update_node->update).lts, update->lts) == 0) {
+        /* The line does not exist yet. TODO: create the line_node_itr->next, set append_update to null, add this like update*/
+        if ((line_list_itr->next = malloc(sizeof(*line_list_itr))) == NULL) {
+           perror("malloc error: new line_node\n");
+           Bye();
+        } 
+        line_list_itr->next->next = NULL;
+        line_list_itr->next->append_update_node = NULL;
+        // TODO: determine how to set up line_node for future like updates.
+    } 
+    if (line_node_itr->next->append_update_node == NULL 
+            || compare_lts((line_node_itr->next->append_update_node->update).lts, update->lts) == 0) {
         /* found the correct line in line_node_itr->next*/
         liker_node * liker_node = get_liker_node(line_node_itr->next);
+        new_update_node * update_node = NULL;
         if (liker_node == NULL) {
             /* need to create a new liker_node to append on end of list
              * for new like or unlike */ 
-        } else if (/*TODO: check if is stale update */){
-            /* TODO: update liker_node*/
+            liker_node = append_liker_node(line_node_itr->next); 
         }
+        
+        if ((new_update_node = add_update_to_queue(update, &update_list_tail, &update_list_tail)) == NULL) {
+            new_update_node = add_update_to_queue(update, liker_node->like_update_node, &update_list_tail); 
+            if (new_update_node != NULL) {
+                /* New update succesfully inserted into list of updates. Now need to insert into data structure */
+                liker_node->like_update_node = new_update_node;
+                /* TODO: Write new_update_node to disk*/ 
+            }
+        }            
     }
 }
 
@@ -121,6 +138,22 @@ liker_node * get_liker_node(line_node *line_node) {
     return like_list_itr->next;
 }
 
+/* TODO: consider merging with getter if find always getting and then appending if DNE*/
+liker_node * append_liker_node(line_node *line_node) {
+    liker_node *liker_list_itr = line_node->likers_list_head;
+    // TODO: consider keeping list in order such that those that have liked come before those that haven't.
+    while (liker_list_itr->next != NULL) { 
+        liker_list_itr = liker_list_itr->next;
+    } 
+    if ((liker_list_itr->next = malloc(sizeof(*liker_list_itr))) == NULL) {
+        perror("malloc error: new liker_node\n");
+        Bye();
+    } 
+    liker_list_itr->next->next = NULL;
+    liker_list_itr->next->like_update_node = NULL;
+    return like_list_itr->next;
+}
+
 room_node * get_chat_room_node(char *chat_room) {
     room_node *itr = &room_list_head;
     while (itr != NULL && strcmp(itr->chat_room, chat_room) != 0) {
@@ -129,20 +162,27 @@ room_node * get_chat_room_node(char *chat_room) {
     return itr;
 }
 
-int add_udpate_to_queue(update *update, update_node *start, update_node *end) {
+update_node * add_udpate_to_queue(update *update, update_node *start, update_node *end) {
     if (start == NULL) {
         start = &update_list_head;
     }     
     if (end == NULL) {
-        end = &update_list_tail[0];
+        end = &update_list_tail;
     }
     
+    if (compare_lts((start->update).lts, update->lts) >= 0) {
+        // If the starting node is greater than the update to be added, than the update cannot be added. 
+        return NULL;
+    }
+
     /* TODO: ensure that logic start != end is correct. */
     while (start != end && start->next != NULL && compare_lts(update->lts, (start->next->update).lts) < 0) {
         start = start->next;
     }   
     
-    if (compare_lts(update->lts, (start->next->update).lts) != 0) {
+    /* If to be inserted at end of list, or can be validly inserted elsewhere 
+     * between before (inclusive) the end */ 
+    if (start->next == NULL || compare_lts(update->lts, (start->next->update).lts) < 0) {
         update_node *new_node = NULL;
         if ((new_node = malloc(sizeof(update_node))) == NULL) {
             perror("error malloc new node.");
@@ -151,10 +191,9 @@ int add_udpate_to_queue(update *update, update_node *start, update_node *end) {
         memcpy(&(new_node->update), update, sizeof(*update));
         new_node->next = start->next;
         start->next = new_node;
-        return 1;
+        return new_node;
     }
-
-    return 0;
+    return NULL;
 }
 
 static void Usage(int argc, char *argv[])
