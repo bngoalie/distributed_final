@@ -18,7 +18,7 @@
 /* TYPE DEFINITIONS */
 
 typedef struct update_node {
-    update update;
+    update *update;
     lamport_timestamp lts;
     struct update_node *next;
 } update_node;
@@ -37,6 +37,7 @@ typedef struct liker_node {
 typedef struct line_node {
     update_node *append_update_node;
     liker_node likers_list_head; // TODO: consider keeping this list sorted, so could use a tail pointer to quickly check if the username already is in list.
+    lamport_timestamp lts;
     struct line_node *next;   
 } line_node;
 
@@ -55,6 +56,10 @@ typedef struct room_node {
 /* The start node will be one behind where it actually wants to start looking,
  * because list has a sentinal node used of looking one node ahead. 
  * TODO: if end is set to null, default to end of queue (or just ignore it) */
-update_node * add_udpate_to_queue(update *update, update_node *start, update_node *end);
+update_node * add_update_to_queue(update *update, update_node *start, update_node *end);
+void handle_like_update(update *update);
+liker_node * get_liker_node(line_node *line_node);
+liker_node * append_liker_node(line_node *line_node);
+room_node * get_chat_room_node(char *chat_room);
 
 #endif

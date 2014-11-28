@@ -89,58 +89,64 @@ int main(int argc, char *argv[]) {
 }
 
 void handle_like_update(update *update) {
+    lamport_timestamp target_lts = ((like_payload *)(&(update->payload)))->lts;
     room_node *room_node = get_chat_room_node(update->chat_room);
     // TODO:*****check if room_node is NULL. then the chat room DNE
-    line_node *line_node_itr = lines_list_head;
-    /* TODO: if make lines_list doubly linked, iterate from the back, as this is more likely where likes will occur */
-    while (line_node_itr->next != NULL && compare_lts((line_node_itr->next->append_update_node->update).lts, update->lts) < 0) {
-        line_node_itr = line_node_itr->next;
+    if (room_node == NULL) {
+        // TODO: create chat room
     }
-    if (line_node_itr->next == NULL) {
-        /* The line does not exist yet. TODO: create the line_node_itr->next, set append_update to null, add this like update*/
+    /* Extract this to external function for getting/adding to line_list*/
+    line_node *line_list_itr = &(room_node->lines_list_head);
+    /* TODO: if make lines_list doubly linked, iterate from the back, as this is more likely where likes will occur */
+    while (line_list_itr->next != NULL 
+              && compare_lts(line_list_itr->next->lts, target_lts) < 0) {
+        line_list_itr = line_list_itr->next;
+    }
+    if (line_list_itr->next == NULL 
+            || compare_lts(target_lts, line_list_itr->next->lts) != 0) {
+        /* The line does not exist yet. */
+        line_node *tmp = line_list_itr->next;
         if ((line_list_itr->next = malloc(sizeof(*line_list_itr))) == NULL) {
            perror("malloc error: new line_node\n");
            Bye();
         } 
-        line_list_itr->next->next = NULL;
+        line_list_itr->next->next = tmp;
         line_list_itr->next->append_update_node = NULL;
-        // TODO: determine how to set up line_node for future like updates.
+        line_list_itr->next->lts = target_lts;
     } 
-    if (line_node_itr->next->append_update_node == NULL 
-            || compare_lts((line_node_itr->next->append_update_node->update).lts, update->lts) == 0) {
-        /* found the correct line in line_node_itr->next*/
-        liker_node * liker_node = get_liker_node(line_node_itr->next);
-        new_update_node * update_node = NULL;
-        if (liker_node == NULL) {
-            /* need to create a new liker_node to append on end of list
-             * for new like or unlike */ 
-            liker_node = append_liker_node(line_node_itr->next); 
-        }
-        
-        if ((new_update_node = add_update_to_queue(update, &update_list_tail, &update_list_tail)) == NULL) {
-            new_update_node = add_update_to_queue(update, liker_node->like_update_node, &update_list_tail); 
-            if (new_update_node != NULL) {
-                /* New update succesfully inserted into list of updates. Now need to insert into data structure */
-                liker_node->like_update_node = new_update_node;
-                /* TODO: Write new_update_node to disk*/ 
-            }
-        }            
+    /* found the correct line in line_list_itr->next*/
+    liker_node *liker_node = get_liker_node(line_list_itr->next);
+    if (liker_node == NULL) {
+        /* need to create a new liker_node to append on end of list
+         * for new like or unlike */ 
+        liker_node = append_liker_node(line_list_itr->next);
     }
+        
+    update_node *new_update_node = NULL;
+    if ((new_update_node = add_update_to_queue(update, update_list_tail, update_list_tail)) == NULL) {
+        new_update_node = add_update_to_queue(update, liker_node->like_update_node, update_list_tail); 
+        if (new_update_node != NULL) {
+            /* New update succesfully inserted into list of updates. Now need to insert into data structure */
+            liker_node->like_update_node = new_update_node;
+            /* TODO: Write new_update_node to disk*/ 
+            /* TODO: send update to chat room group */
+        }
+    }            
 }
 
 /* Currently returns the liker_node associated with the given line_node. */
 liker_node * get_liker_node(line_node *line_node) {
-    liker_node *liker_list_itr = line_node->likers_list_head;
+    liker_node *liker_list_itr = &(line_node->likers_list_head);
     while (liker_list_itr->next != NULL 
-               && strcmp((liker_list_itr->next->like_update_node->update).username, (line_node->append_update_node->update).username) != 0) {
+               && strcmp(liker_list_itr->next->like_update_node->update->username, line_node->append_update_node->update->username) != 0) {
         liker_list_itr = liker_list_itr->next;
     } 
-    return like_list_itr->next;
+    return liker_list_itr->next;
 }
 
 /* TODO: consider merging with getter if find always getting and then appending if DNE*/
 liker_node * append_liker_node(line_node *line_node) {
-    liker_node *liker_list_itr = line_node->likers_list_head;
+    liker_node *liker_list_itr = &(line_node->likers_list_head);
     // TODO: consider keeping list in order such that those that have liked come before those that haven't.
     while (liker_list_itr->next != NULL) { 
         liker_list_itr = liker_list_itr->next;
@@ -151,7 +157,7 @@ liker_node * append_liker_node(line_node *line_node) {
     } 
     liker_list_itr->next->next = NULL;
     liker_list_itr->next->like_update_node = NULL;
-    return like_list_itr->next;
+    return liker_list_itr->next;
 }
 
 room_node * get_chat_room_node(char *chat_room) {
@@ -162,12 +168,16 @@ room_node * get_chat_room_node(char *chat_room) {
     return itr;
 }
 
-update_node * add_udpate_to_queue(update *update, update_node *start, update_node *end) {
+/* This method will attempt to add the given update to the update list if possible.
+ * If the update_node already exists, but does not have a given update, it will
+ * insert the given update to the node and return the node. 
+ * It will return the node upon creating a new update_node too. */
+update_node * add_update_to_queue(update *update, update_node *start, update_node *end) {
     if (start == NULL) {
         start = &update_list_head;
     }     
     if (end == NULL) {
-        end = &update_list_tail;
+        end = update_list_tail;
     }
     
     if (compare_lts(start->lts, update->lts) >= 0) {
@@ -183,19 +193,33 @@ update_node * add_udpate_to_queue(update *update, update_node *start, update_nod
     /* If to be inserted at end of list, or can be validly inserted elsewhere 
      * between before (inclusive) the end */
     // TODO: ***** If node exists, but update pointer is NULL, memcopy new update; 
-    if (start->next == NULL || compare_lts(update->lts, start->next->lts) < 0) {
-        update_node *new_node = NULL;
+    update_node *new_node = NULL;
+    if (start->next == NULL || compare_lts(update->lts, start->next->lts) > 0) {
         if ((new_node = malloc(sizeof(update_node))) == NULL) {
             perror("error malloc new node.");
             Bye();           
         }
-        // TODO: ***** Malloc new update for memcpy
-        memcpy(&(new_node->update), update, isizeof(*update));
+        new_node->lts = update->lts;
         new_node->next = start->next;
         start->next = new_node;
-        return new_node;
+    } else if (start->next != NULL 
+                  && compare_lts(update->lts, start->next->lts) == 0 
+                  && start->next->update == NULL) {
+        /* The update_node already exists for this lts, BUT there is no actual update
+         * This can occur if another update pertaining to this update was received
+         * before this update was received */
+        new_node = start->next;
     }
-    return NULL;
+    if (new_node != NULL && new_node->update == NULL) {
+        /* TODO: Determine if will malloc earlier and then simply point new 
+         * update to given update pointer */
+        if ((new_node->update = malloc(sizeof(*update))) == NULL) {
+            perror("error malloc new update for node.");
+            Bye();           
+        }
+        memcpy(new_node->update, update, sizeof(*update));
+    }
+    return new_node;
 }
 
 static void Usage(int argc, char *argv[])
