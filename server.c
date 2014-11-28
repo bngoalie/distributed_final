@@ -123,12 +123,10 @@ void handle_append_update(update *update) {
             update_node *start = start_line == NULL ? (room_node->lines_list_head).append_update_node : start_line->append_update_node;
             new_update_node = add_update_to_queue(update, start, update_list_tail); 
         }
-        if (new_update_node != NULL) {
-            /* New update succesfully inserted into list of updates. Now need to insert into data structure */
-            line_list_itr->next->append_update_node = new_update_node;
-            /* TODO: Write new_update_node to disk*/ 
-            /* TODO: send update to chat room group */
-        }
+        /* New update succesfully inserted into list of updates. Now need to insert into data structure */
+        line_list_itr->next->append_update_node = new_update_node;
+        /* TODO: Write new_update_node to disk*/ 
+        /* TODO: send update to chat room group */
     }
 }
 
