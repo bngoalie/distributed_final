@@ -172,6 +172,7 @@ void handle_like_update(update *update) {
         tmp->append_update_node = NULL;
         tmp->lts = target_lts;
         line_list_itr->next = tmp;
+        tmp->prev = line_list_itr;
         if (tmp->next != NULL) {
             tmp->next->prev = tmp;
         } else {
