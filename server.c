@@ -91,22 +91,26 @@ int main(int argc, char *argv[]) {
 }
 
 void handle_update(update *update, char *private_spread_group) {
-    most_recent_server_updates[(update->lts).server_id] = (update->lts).server_seq;
-    int update_type = update->type;
-    switch (update_type) {
-        case 0:
-            handle_append_update(update);
-            break;
-        case 1:
-            handle_like_update(update);
-            break;
-        case 2:
-            handle_join_update(update, private_spread_group);
-            break;
-        default:
-            perror("unexpected update type\n");
-            Bye();
-    } 
+    int update_seq = (update->lts).server_seq;
+    int update_server_id = (update->lts).server_id;
+    if (most_recent_server_updates[update_server_id] < update_seq) {
+        most_recent_server_updates[update_server_id] = update_seq;
+        int update_type = update->type;
+        switch (update_type) {
+            case 0:
+                handle_append_update(update);
+                break;
+            case 1:
+                handle_like_update(update);
+                break;
+            case 2:
+                handle_join_update(update, private_spread_group);
+                break;
+            default:
+                perror("unexpected update type\n");
+                Bye();
+        } 
+    }
 }
 
 void handle_append_update(update *update) {
