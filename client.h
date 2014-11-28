@@ -22,11 +22,11 @@
 
 /* DEFINITIONS */
 
-#define DAEMON1             "10010@128.220.224.89"
-#define DAEMON2             "10010@128.220.224.90"
-#define DAEMON3             "10010@128.220.224.91"
-#define DAEMON4             "10010@128.220.224.92"
-#define DAEMON5             "10010@128.220.224.93"
+#define DAEMON1 "10010@128.220.224.89"
+#define DAEMON2 "10010@128.220.224.90"
+#define DAEMON3 "10010@128.220.224.91"
+#define DAEMON4 "10010@128.220.224.92"
+#define DAEMON5 "10010@128.220.224.93"
  
 /* TYPE DEFINITIONS */
 
@@ -73,6 +73,6 @@ void send_username_update();
 void update_display();
 
 /* Close the client */
-void close();
+void close_client();
 
 #endif

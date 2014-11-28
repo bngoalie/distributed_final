@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+
 /* CONSTANT DEFINITIONS */
 
 #define SPREAD_SERVER_GROUP "server_group"
@@ -69,10 +70,13 @@ typedef struct {
  * if the counters are equal, uses the lts' server_ids*/
 int compare_lts(lamport_timestamp lts1, lamport_timestamp lts2);
 
+/* Get Spread group for sending to specific server */
 void get_single_server_group(int server_id, char *group);
 
+/* Get Spread group for a specific chat room and server */
 void get_room_group(int server_id, char *room_name, char *room_group);
-void get_lobby_group(int server_id, char *group);
 
+/* Get Spread group for a server lobby */
+void get_lobby_group(int server_id, char *group);
 
 #endif

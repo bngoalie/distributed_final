@@ -24,10 +24,9 @@ void get_single_server_group_name(int server_id, char *group) {
     if (group == NULL) {
         return;
     }
-    char server_id_str[5];
-    sprintf(server_id_str, "%d", server_id);
-    sprintf(group, "server-");
-    strcat(group, server_id_str);
+    char buffer[10] = "";
+    sprintf(buffer, "server%d", server_id);
+    strcpy(group, &buffer[0]);
 }
 
 void get_room_group(int server_id, char *room_name, char *room_group) {
@@ -35,8 +34,8 @@ void get_room_group(int server_id, char *room_name, char *room_group) {
         return;
     }
     get_single_server_group_name(server_id, room_group);
-    sprintf(room_group, "%s-", room_group);
-    strcat(room_group, room_name); 
+    //strcat(room_group, "_");
+    strcat(room_group, &room_name[0]); 
 }
 
 void get_lobby_group(int server_id, char *group){

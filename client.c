@@ -28,7 +28,9 @@ int     server_id;
 mailbox mbox;
 
 /* Main */
-int main(){    
+int main(){
+    // Initialize blank username
+    strcpy(&username[0], "");
     // Initialize event handling system (user input only)
     E_init(); 
     E_attach_fd(0, READ_FD, parse_input, 0, NULL, LOW_PRIORITY);
@@ -44,7 +46,7 @@ void parse_input(){
     for(unsigned int i=0; i < sizeof(input); i++) 
         input[i] = 0;
     if(fgets(input, 130, stdin) == NULL)
-        close();
+        close_client();
 
     // Parse command:
     switch(input[0]){
@@ -72,8 +74,8 @@ void parse_input(){
         case 'v':   // Display view
             // TODO: Define function for displaying current view
             break;
-        case 'e':   // Exit
-            close();        
+        case 'q':   // Quit 
+            close_client();        
             break;
         default:    // Invalid input
             printf("Error: invalid input");
@@ -97,68 +99,84 @@ void connect_to_server(int new_id){
     timeout.usec = 500000;
     const char* daemons[5] = {DAEMON1, DAEMON2, DAEMON3, DAEMON4, DAEMON5}; 
     
-    // Set global server_id if not same as current server
-    if(new_id == server_id)
+    // Store current mailbox if already connected TODO: verify this will work 
+    if(connected)
+        mbox_temp = mbox;
+
+    // Check that id is valid and new
+    if(new_id < 1 || new_id > 5)
+        printf("Error: invalid server ID (range is 1-5)\n");
+    else if (new_id == server_id) 
         printf("Already connected to server %d!\n", server_id);
     else{
-        server_id = new_id; // global, needed in other functions
-        // Check id range
-        if(server_id >= 1 && server_id <= 5){
-            // Prepare for possible event handler changes...
-            E_exit_events();
-            E_init();       
-            E_attach_fd(0, READ_FD, parse_input, 0, NULL, LOW_PRIORITY);
-            // Connect to Spread daemon
-            printf("Connecting to server %d...\n", server_id);
-            mbox_temp = mbox;
-            ret = SP_connect_timeout(daemons[server_id - 1], NULL, 0, 1, 
-                &mbox, private_group, timeout);
-            if(ret != ACCEPT_SESSION){
-                SP_error(ret);
-                printf("Error: unable to connect to server %d\n", server_id);
-                mbox = mbox_temp; // Use previous mailbox if unable to connect TODO: verify this works
-            }
-            // Join lobby group
-            get_lobby_group(server_id, &room_group[0]); // lobby group needs to have a distinct name
+        // Prepare for possible event handler changes...
+        E_exit_events();
+        E_init();       
+        E_attach_fd(0, READ_FD, parse_input, 0, NULL, LOW_PRIORITY);
+        // Connect to Spread daemon
+        printf("Connecting to server %d...\n", new_id);
+        ret = SP_connect_timeout(daemons[new_id - 1], NULL, 0, 1, 
+            &mbox, private_group, timeout);
+        if(ret != ACCEPT_SESSION){
+            // If unable to connect to daemon, indicate failure
+            if(connected) // if previously connected, revert
+                mbox = mbox_temp; 
+            printf("Error: unable to connect to daemon for server %d\n", new_id);
+        }else{
+            // If successful, join lobby group
+            get_lobby_group(new_id, &room_group[0]); // lobby group needs to have a distinct name
             ret = SP_join(mbox, &room_group[0]);
             if(ret != 0){
+                // If unable to join lobby, indicate failure
                 SP_error(ret);
-                printf("Error: unable to join lobby group for server %d\n", server_id);
+                if(connected) // if previously connected, revert
+                    mbox = mbox_temp;
+                printf("Error: unable to join lobby group for server %d\n", new_id);
             }else{
-                // Indicate success
+                // If already connected, disconnect from previous daemon
+                if(connected)
+                    SP_disconnect(mbox_temp);
+                // Set global server ID and indicate success
                 connected = true;
-                printf("Successfully connected to server %d\n", server_id);
+                server_id = new_id;
+                printf("Successfully joined group %s\n", &room_group[0]);
+                // If username is already set, send to server
+                if(strcmp(&username[0], ""))
+                    send_username_update();
                 // Attach file descriptor for incoming message handling
                 E_attach_fd(mbox, READ_FD, parse_update, 0, NULL, HIGH_PRIORITY);
             }
-            // Start event handler
-            E_handle_events();
-        }else
-            printf("Error: invalid server ID\n");
+        }
+        // Start event handler
+        E_handle_events();
     }
-    // TODO: Need to confirm that server is present - server should ack new clients? 
+    // TODO: Need to confirm that server itself is running. Expect some sort of ack? 
 }
 
 /* Join chat room with given room_name */
 void join_chat_room(char *room_name){
     int     ret;    
-    char*   lobby = "";
+    char    lobby[10] = "";
 
-    // TODO: Message server to indicate room change
-    
-    // Leave current room group // TODO: join first, then leave?
-    get_lobby_group(server_id, lobby);
-    if(!strcmp(&room_group[0], lobby)) // don't leave lobby
-         SP_leave(mbox, &room_group[0]);
- 
-    // Join new room group
-    get_room_group(server_id, room_name, &room_group[0]);
-    ret = SP_join(mbox, &room_group[0]);
-    if(ret != 0){
-        SP_error(ret);
-        printf("Error: unable to join lobby group for server %d\n", server_id);
+    // Ensure client is connected to a server
+    if(connected){
+        // TODO: Message server to indicate room change
+        
+        // Leave current room group // TODO: join first, then leave?
+        get_lobby_group(server_id, lobby);
+        if(strcmp(&room_group[0], lobby)) // don't leave lobby
+             SP_leave(mbox, &room_group[0]);
+     
+        // Join new room group
+        get_room_group(server_id, room_name, &room_group[0]);
+        ret = SP_join(mbox, &room_group[0]);
+        if(ret != 0){
+            SP_error(ret);
+            printf("Error: unable to join group %s\n", &room_group[0]);
+        }
+    }else{
+        printf("Error: must be connected to a server to join a room\n");
     }
-
     // TODO: Any additional steps client-side? Don't think so:
     // Server should automatically send recent updates upon seeing client
     // join the group, or upon the server itself joining the new group.
@@ -171,8 +189,9 @@ void change_username(char *new_username){
     if(strcmp(&username[0], new_username)){
         // Set local username
         strcpy(&username[0], new_username);
-        // Send new username to server
-        send_username_update();
+        // If connected, send new username to server
+        if(connected)
+            send_username_update();
         printf("Set username to %s\n", new_username);
     }else{
         printf("Error: username is already %s\n", &username[0]);
@@ -194,6 +213,7 @@ void like_line(int line_num, bool like){
 
 /* Send local username to server */
 void send_username_update(){
+    printf("Placeholder - sending username update\n");
     // TODO: message new username to server (need struct)
 }
 
@@ -203,7 +223,7 @@ void update_display(){
 }
 
 /* Close the client */
-void close(){
+void close_client(){
     printf("\nClosing client\n");
     if(connected)
         SP_disconnect(mbox);
