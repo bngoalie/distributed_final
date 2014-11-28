@@ -51,7 +51,10 @@ typedef struct {
 } join_payload;
 #define JOIN_PAYLOAD_SIZE sizeof(join_payload)
 
-
+/* Type values:
+ * 0: append
+ * 1: like
+ * 2: join */
 typedef struct {
     int type;
     lamport_timestamp lts;

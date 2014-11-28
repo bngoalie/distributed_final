@@ -44,7 +44,7 @@ update_node *update_list_tail;
  * could be simply replaced with an int array for seqs, but need to update only when receive an 
  * update that is one higher than current. if receive an even higher seq, need to remember that received this seq.
  * This could evolve into some kind of sliding window mechnism liken that used in ex1 and ex2*/
-update_node *most_recent_server_updates[5]; // used for checking most recent seq from each server? TODO: replace 5 with macro. 
+int most_recent_server_updates[MAX_MEMBERS]; // used for checking most recent seq from each server? TODO: replace 5 with macro. 
 
 static	void	    Usage( int argc, char *argv[] );
 static  void        Print_help();
@@ -88,6 +88,25 @@ int main(int argc, char *argv[]) {
 
     /* TODO: join server_group and personal_group */
 
+}
+
+void handle_update(update *update, char *private_spread_group) {
+    most_recent_server_updates[(update->lts).server_id] = (update->lts).server_seq;
+    int update_type = update->type;
+    switch (update_type) {
+        case 0:
+            handle_append_update(update);
+            break;
+        case 1:
+            handle_like_update(update);
+            break;
+        case 2:
+            handle_join_update(update, private_spread_group);
+            break;
+        default:
+            perror("unexpected update type\n");
+            Bye();
+    } 
 }
 
 void handle_append_update(update *update) {
@@ -241,14 +260,16 @@ client_node * add_client_to_list_if_relevant(client_node *client_list_head,
     }
    
     if (client_list_head->next == NULL) {
-        // TODO: create new client_node
+        // create new client_node
         if ((client_list_head->next = malloc(sizeof(client_node))) == NULL) {
             perror("malloc error: new client node\n");
             Bye();
         }
         client_list_head->next->next = NULL;
         client_list_head->next->join_update = NULL;
-        strcpy(client_list_head->next->client_group, group); 
+        if (group != NULL) {
+            strcpy(client_list_head->next->client_group, group); 
+        }
     } 
     return client_list_head->next;
 } 

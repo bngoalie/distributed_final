@@ -67,5 +67,6 @@ room_node * append_chat_room_node(char *chat_room);
 client_node * add_client_to_list_if_relevant(client_node *client_list_head, 
                                                 char *group, update *join_update); 
 void handle_join_update(update *update, char *client_spread_group);
+void handle_update(update *update, char *private_spread_group);
 
 #endif
