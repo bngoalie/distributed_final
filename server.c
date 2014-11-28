@@ -443,6 +443,12 @@ static void	Read_message() {
         for (int idx = 0; idx < num_groups; idx++) {
             if (strcmp(target_groups[idx], server_group) == 0) {
                 /* The message is from the spread group for servers. */
+                server_message *recv_serv_msg = (server_message *)mess;
+                switch(recv_serv_msg->type) {
+                    case 0: // regular update
+                        handle_update((update *)&(recv_serv_msg->payload), sender);
+                        break;
+                } 
             } else if (strcmp(target_groups[idx], personal_group) == 0) {
                 /*The message was sent to the server's personal group (from a client)*/
             } else {
