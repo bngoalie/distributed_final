@@ -14,6 +14,7 @@
 #include "support.h"
 
 /* CONSTANT DEFINITIONS */
+#define MAX_MEMBERS     10
 
 /* TYPE DEFINITIONS */
 
@@ -47,9 +48,7 @@ typedef struct room_node {
     char chat_room[MAX_ROOM_NAME_LENGTH];
     /* TODO: consider char[] for spread group for chat room isntead of recomputing it everytime want to send message to clients*/
     struct room_node *next;
-    /* TODO: Determine if a tail pointer would be beneficial. */
-    client_node my_clients_head;
-    client_node other_clients_head;
+    client_node client_heads[MAX_MEMBERS];
     line_node lines_list_head;
     line_node *lines_list_tail;
 } room_node;
@@ -65,5 +64,8 @@ liker_node * append_liker_node(line_node *line_node);
 room_node * get_chat_room_node(char *chat_room);
 void handle_append_update(update *update);
 room_node * append_chat_room_node(char *chat_room);
+client_node * add_client_to_list_if_relevant(client_node *client_list_head, 
+                                                char *group, update *join_update); 
+void handle_join_update(update *update, char *client_spread_group);
 
 #endif

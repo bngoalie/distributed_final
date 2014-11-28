@@ -16,7 +16,7 @@
 #include "support.h"
 #include "server.h"
 
-#define MAX_MEMBERS     10
+
 #define MAX_GROUPS      MAX_MEMBERS
 #define DEBUG           0
 
@@ -212,11 +212,53 @@ void handle_like_update(update *update) {
     }            
 }
 
+void handle_join_update(update *update, char *client_spread_group) {
+    room_node *room_node = get_chat_room_node(update->chat_room);
+    if (room_node == NULL) {
+        room_node = append_chat_room_node(update->chat_room);
+    }
+    client_node *client_list_head = &(room_node->client_heads[(update->lts).server_id]);  
+    client_node *start_node = add_client_to_list_if_relevant(client_list_head, client_spread_group, update); 
+    update_node *ret_update_node = add_update_to_queue(update, start_node->join_update, update_list_tail);
+    if (ret_update_node == NULL) {
+        perror("add_to_update_queue unable to add join/leave update. this should not happen\n");
+        Bye();
+    }
+    start_node->join_update = ret_update_node;
+}
+
+/* While join's and leaves can be for the same username from different cleints,
+ * joins and leaves from the same server are received in FIFO order.
+ * Therefore, even when we are merging, we are receiving joins and leaves in same order. */
+client_node * add_client_to_list_if_relevant(client_node *client_list_head, 
+                                                char *group, update *join_update) {
+    /* find first client_node that has the same username and has a different toggle value*/
+    while (client_list_head->next != NULL 
+              && (strcmp(client_list_head->next->join_update->update->username, join_update->username) != 0
+              || ((join_payload *)&(client_list_head->next->join_update->update->payload))->toggle 
+                    != ((join_payload *)&(join_update->payload))->toggle)) {
+       client_list_head = client_list_head->next; 
+    }
+   
+    if (client_list_head->next == NULL) {
+        // TODO: create new client_node
+        if ((client_list_head->next = malloc(sizeof(client_node))) == NULL) {
+            perror("malloc error: new client node\n");
+            Bye();
+        }
+        client_list_head->next->next = NULL;
+        client_list_head->next->join_update = NULL;
+        strcpy(client_list_head->next->client_group, group); 
+    } 
+    return client_list_head->next;
+} 
+
 /* Currently returns the liker_node associated with the given line_node. */
 liker_node * get_liker_node(line_node *line_node) {
     liker_node *liker_list_itr = &(line_node->likers_list_head);
     while (liker_list_itr->next != NULL 
-               && strcmp(liker_list_itr->next->like_update_node->update->username, line_node->append_update_node->update->username) != 0) {
+               && (liker_list_itr->next->like_update_node == NULL 
+                      || strcmp(liker_list_itr->next->like_update_node->update->username, line_node->append_update_node->update->username) != 0)) {
         liker_list_itr = liker_list_itr->next;
     } 
     return liker_list_itr->next;
@@ -260,6 +302,10 @@ room_node * append_chat_room_node(char *chat_room) {
     room_list_tail->next = new_room;
     room_list_tail = new_room;
     strcpy(new_room->chat_room, chat_room);
+    int i = 0;
+    for (i = 0; i < MAX_MEMBERS; i++) {
+        (new_room->client_heads[i]).next = NULL;
+    }
 
     return new_room;
 }
