@@ -123,6 +123,11 @@ void handle_append_update(update *update) {
             update_node *start = start_line == NULL ? (room_node->lines_list_head).append_update_node : start_line->append_update_node;
             new_update_node = add_update_to_queue(update, start, update_list_tail); 
         }
+        if (new_update_node == NULL) {
+            perror("there was a problem inserting a new update to queue of updates. there shouldn't be a problem \
+because this append update was succesfully inserted into data structure\n");
+            Bye();
+        }
         /* New update succesfully inserted into list of updates. Now need to insert into data structure */
         line_list_itr->next->append_update_node = new_update_node;
         /* TODO: Write new_update_node to disk*/ 
