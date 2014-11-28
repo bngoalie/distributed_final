@@ -87,6 +87,24 @@ int main(int argc, char *argv[]) {
     }
 
     /* TODO: join server_group and personal_group */
+    /* Join server_group */
+    ret = SP_join(Mbox, server_group);
+    if (ret < 0) {
+        SP_error(ret);
+    }
+    /* TODO: send out request to servers for all messages after largest knowns
+     * seqs from each server */
+
+    /* join server's personal_group.
+     * We do this last because we want to first get in sync with servers first */
+    /* TODO: this logic should probably only happen after this server is done
+     * merging" with the rest of the servers. 
+     * Issue is if instead treat requested updates regularly, and join personal_group
+     * then how determine different than regular updates and keep from spamming clients?*/
+    ret = SP_join(Mbox, personal_group);
+    if (ret < 0) {
+        SP_error(ret);
+    }
 
 }
 
@@ -397,6 +415,43 @@ update_node * add_update_to_queue(update *update, update_node *start, update_nod
     return new_node;
 }
 
+static void	Read_message() {
+    /* Local vars */
+    static char	        mess[1200];
+    char		    sender[MAX_GROUP_NAME];
+    char		    target_groups[MAX_GROUPS][MAX_GROUP_NAME];
+   // membership_info memb_info;
+    int		        num_groups;
+    int		        service_type;
+    int16		    mess_type;
+    int		        endian_mismatch;
+   //int		        i;
+    int		        ret;
+   // Message         *message;
+
+    service_type = 0;
+	ret = SP_receive(Mbox, &service_type, sender, MAX_GROUPS, &num_groups, target_groups, 
+		&mess_type, &endian_mismatch, sizeof(mess), mess);
+
+    if(ret < 0) 
+	{
+        SP_error(ret);
+		Bye();
+	}
+
+	if(Is_regular_mess(service_type)) { // Regular message
+        for (int idx = 0; idx < num_groups; idx++) {
+            if (strcmp(target_groups[idx], server_group) == 0) {
+                /* The message is from the spread group for servers. */
+            } else if (strcmp(target_groups[idx], personal_group) == 0) {
+                /*The message was sent to the server's personal group (from a client)*/
+            } else {
+                /* The server should not be receiving regular messages from any other groups
+                 * (i.e. chat room groups) */
+            }
+        }	
+    }
+}
 static void Usage(int argc, char *argv[])
 {
     /* TODO: consider just passing NULL as User when connecting to daeomn, 
@@ -414,7 +469,7 @@ static void Usage(int argc, char *argv[])
         num_processes   = atoi(argv[2]);    // Number of processes
 
         /* Set name of group where this server is only member */
-        get_single_server_group(process_index, &personal_group[0]);
+        get_single_server_group(process_index, personal_group);
         
 
         /* Check number of processes */

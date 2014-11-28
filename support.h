@@ -21,6 +21,7 @@
 #define MAX_USERNAME_LENGTH     20
 #define MAX_ROOM_NAME_LENGTH    20
 #define MAX_LINE_LENGTH         80
+#define MAX_MESS_LEN            100000
 
 /* TYPE DEFINITIONS */
 
