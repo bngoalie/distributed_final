@@ -113,12 +113,16 @@ void handle_append_update(update *update) {
         line_list_itr->next->next = tmp;
         line_list_itr->next->append_update_node = NULL;
         line_list_itr->next->lts = update->lts;
-    }
-
-    /* TODO: determine if should add to update lies first instead. */
-    update_node *new_update_node = NULL;
-    if ((new_update_node = add_update_to_queue(update, update_list_tail, update_list_tail)) == NULL) {
-        new_update_node = add_update_to_queue(update, (room_node->lines_list_head).append_update_node, update_list_tail); 
+    
+        /* TODO: determine if should add to update list first instead. */
+        update_node *new_update_node = NULL;
+        if ((new_update_node = add_update_to_queue(update, update_list_tail, update_list_tail)) == NULL) {
+            /* Will try to start searching from the previous line's lts, or the first line's lts. */
+            line_node *start_line = line_list_itr->append_update_node == NULL ? (room_node->lines_list_head).next : lines_list_itr;
+            /* If the current start_line is actually NULL (i.e. there is no first line, then use whatever the sentinal has (probably null) */
+            update_node *start = start_line == NULL ? (room_node->lines_list_head).append_update_node : start_line->append_update_node;
+            new_update_node = add_update_to_queue(update, start, update_list_tail); 
+        }
         if (new_update_node != NULL) {
             /* New update succesfully inserted into list of updates. Now need to insert into data structure */
             line_list_itr->next->append_update_node = new_update_node;
@@ -126,7 +130,6 @@ void handle_append_update(update *update) {
             /* TODO: send update to chat room group */
         }
     }
- 
 }
 
 
@@ -236,7 +239,8 @@ update_node * add_update_to_queue(update *update, update_node *start, update_nod
      * between before (inclusive) the end */
     // TODO: ***** If node exists, but update pointer is NULL, memcopy new update; 
     update_node *new_node = NULL;
-    if (start->next == NULL || compare_lts(update->lts, start->next->lts) > 0) {
+    if (compare_lts(update->lts, start->lts) > 0 
+        && (start->next == NULL || compare_lts(update->lts, start->next->lts) < 0)) {
         if ((new_node = malloc(sizeof(update_node))) == NULL) {
             perror("error malloc new node.");
             Bye();           
