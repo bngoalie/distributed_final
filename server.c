@@ -163,14 +163,20 @@ void handle_like_update(update *update) {
     if (line_list_itr->next == NULL 
             || compare_lts(target_lts, line_list_itr->next->lts) != 0) {
         /* The line does not exist yet. */
-        line_node *tmp = line_list_itr->next;
-        if ((line_list_itr->next = malloc(sizeof(*line_list_itr))) == NULL) {
+        line_node *tmp;
+        if ((tmp = malloc(sizeof(*line_list_itr))) == NULL) {
            perror("malloc error: new line_node\n");
            Bye();
         } 
-        line_list_itr->next->next = tmp;
-        line_list_itr->next->append_update_node = NULL;
-        line_list_itr->next->lts = target_lts;
+        tmp->next = line_list_itr->next;
+        tmp->append_update_node = NULL;
+        tmp->lts = target_lts;
+        line_list_itr->next = tmp;
+        if (tmp->next != NULL) {
+            tmp->next->prev = tmp;
+        } else {
+            room_node->lines_list_tail = tmp;
+        }
     } 
     /* found the correct line in line_list_itr->next*/
     liker_node *liker_node = get_liker_node(line_list_itr->next);
@@ -182,7 +188,16 @@ void handle_like_update(update *update) {
         
     update_node *new_update_node = NULL;
     if ((new_update_node = add_update_to_queue(update, update_list_tail, update_list_tail)) == NULL) {
-        new_update_node = add_update_to_queue(update, liker_node->like_update_node, update_list_tail); 
+        update_node *start_node = liker_node->like_update_node;
+        if (start_node == NULL) {
+            /* search from closest line */
+            line_node *line_node_itr = line_list_itr->next;
+            while (line_node_itr->append_update_node == NULL && line_node_itr->prev != NULL) {
+                line_node_itr = line_node_itr->prev;
+            }
+            start_node = line_node_itr->append_update_node;
+        }
+        new_update_node = add_update_to_queue(update, start_node, update_list_tail); 
         if (new_update_node != NULL) {
             /* New update succesfully inserted into list of updates. Now need to insert into data structure */
             liker_node->like_update_node = new_update_node;
