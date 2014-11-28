@@ -61,5 +61,5 @@ void handle_like_update(update *update);
 liker_node * get_liker_node(line_node *line_node);
 liker_node * append_liker_node(line_node *line_node);
 room_node * get_chat_room_node(char *chat_room);
-
+void handle_append_update(update *update);
 #endif

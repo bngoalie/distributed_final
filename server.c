@@ -88,6 +88,48 @@ int main(int argc, char *argv[]) {
 
 }
 
+void handle_append_update(update *update) {
+    room_node *room_node = get_chat_room_node(update->chat_room);
+    // TODO:*****check if room_node is NULL. then the chat room DNE
+    if (room_node == NULL) {
+        // TODO: create chat room
+    }
+    
+    /* TODO: Extract this to external function for getting/adding to line_list*/
+    line_node *line_list_itr = &(room_node->lines_list_head);
+    /* TODO: if make lines_list doubly linked, iterate from the back, as this is more likely where likes will occur */
+    while (line_list_itr->next != NULL 
+              && compare_lts(line_list_itr->next->lts, update->lts) < 0) {
+        line_list_itr = line_list_itr->next;
+    }
+    if (line_list_itr->next == NULL 
+            || compare_lts(update->lts, line_list_itr->next->lts) != 0) {
+        /* The line does not exist yet. */
+        line_node *tmp = line_list_itr->next;
+        if ((line_list_itr->next = malloc(sizeof(*line_list_itr))) == NULL) {
+           perror("malloc error: new line_node\n");
+           Bye();
+        } 
+        line_list_itr->next->next = tmp;
+        line_list_itr->next->append_update_node = NULL;
+        line_list_itr->next->lts = update->lts;
+    }
+
+    /* TODO: determine if should add to update lies first instead. */
+    update_node *new_update_node = NULL;
+    if ((new_update_node = add_update_to_queue(update, update_list_tail, update_list_tail)) == NULL) {
+        new_update_node = add_update_to_queue(update, (room_node->lines_list_head).append_update_node, update_list_tail); 
+        if (new_update_node != NULL) {
+            /* New update succesfully inserted into list of updates. Now need to insert into data structure */
+            line_list_itr->next->append_update_node = new_update_node;
+            /* TODO: Write new_update_node to disk*/ 
+            /* TODO: send update to chat room group */
+        }
+    }
+ 
+}
+
+
 void handle_like_update(update *update) {
     lamport_timestamp target_lts = ((like_payload *)(&(update->payload)))->lts;
     room_node *room_node = get_chat_room_node(update->chat_room);
@@ -95,7 +137,7 @@ void handle_like_update(update *update) {
     if (room_node == NULL) {
         // TODO: create chat room
     }
-    /* Extract this to external function for getting/adding to line_list*/
+    /* TODO: Extract this to external function for getting/adding to line_list*/
     line_node *line_list_itr = &(room_node->lines_list_head);
     /* TODO: if make lines_list doubly linked, iterate from the back, as this is more likely where likes will occur */
     while (line_list_itr->next != NULL 
