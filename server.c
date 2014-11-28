@@ -52,8 +52,8 @@ static  void        Bye();
 int main(int argc, char *argv[]) {
 
     /* Set up list of rooms (set up the lobby) */
-    room_list_head.twenty_fifth_oldest_line = NULL;
     room_list_head.next = NULL;
+    room_list_head.lines_list_tail = NULL;
 
     /* Set up list of updates */
     update_list_head.next = NULL;
@@ -105,23 +105,33 @@ void handle_append_update(update *update) {
     if (line_list_itr->next == NULL 
             || compare_lts(update->lts, line_list_itr->next->lts) != 0) {
         /* The line does not exist yet. */
-        line_node *tmp = line_list_itr->next;
-        if ((line_list_itr->next = malloc(sizeof(*line_list_itr))) == NULL) {
+        line_node *tmp;
+        if ((tmp = malloc(sizeof(*line_list_itr))) == NULL) {
            perror("malloc error: new line_node\n");
            Bye();
+        }
+        tmp->prev = line_list_itr; 
+        tmp->next = line_list_itr->next;
+        if (tmp->next != NULL) {
+            tmp->next->prev = tmp;
         } 
-        line_list_itr->next->next = tmp;
-        line_list_itr->next->append_update_node = NULL;
-        line_list_itr->next->lts = update->lts;
-    
+        tmp->append_update_node = NULL;
+        tmp->lts = update->lts;
+        line_list_itr->next = tmp; 
         /* TODO: determine if should add to update list first instead. */
         update_node *new_update_node = NULL;
-        if ((new_update_node = add_update_to_queue(update, update_list_tail, update_list_tail)) == NULL) {
-            /* Will try to start searching from the previous line's lts, or the first line's lts. */
-            line_node *start_line = line_list_itr->append_update_node == NULL ? (room_node->lines_list_head).next : lines_list_itr;
-            /* If the current start_line is actually NULL (i.e. there is no first line, then use whatever the sentinal has (probably null) */
-            update_node *start = start_line == NULL ? (room_node->lines_list_head).append_update_node : start_line->append_update_node;
-            new_update_node = add_update_to_queue(update, start, update_list_tail); 
+        if (tmp->next == NULL) {
+            room_node->lines_list_tail = tmp;
+            /* This line is the newest, try to add to end of update queue*/
+            new_update_node = add_update_to_queue(update, update_list_tail, update_list_tail);
+        }
+        if (new_update_node == NULL) {
+            /* find first line older than new line where there is an allocated update_node*/
+            line_node *start_line = line_list_itr;
+            while (start_line->append_update_node == NULL && start_line->prev != NULL) {
+               start_line = start_line->prev; 
+            }
+            new_update_node = add_update_to_queue(update, start_line->append_update_node, update_list_tail); 
         }
         if (new_update_node == NULL) {
             perror("there was a problem inserting a new update to queue of updates. there shouldn't be a problem \
@@ -129,7 +139,7 @@ because this append update was succesfully inserted into data structure\n");
             Bye();
         }
         /* New update succesfully inserted into list of updates. Now need to insert into data structure */
-        line_list_itr->next->append_update_node = new_update_node;
+        tmp->append_update_node = new_update_node;
         /* TODO: Write new_update_node to disk*/ 
         /* TODO: send update to chat room group */
     }
@@ -250,6 +260,13 @@ update_node * add_update_to_queue(update *update, update_node *start, update_nod
         }
         new_node->lts = update->lts;
         new_node->next = start->next;
+        if (new_node->next != NULL) {
+            new_node->next->prev = new_node;
+        } else {
+            update_list_tail = new_node;
+        }
+        new_node->prev = start;
+        new_node->update = NULL;
         start->next = new_node;
     } else if (start->next != NULL 
                   && compare_lts(update->lts, start->next->lts) == 0 

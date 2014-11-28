@@ -21,6 +21,7 @@ typedef struct update_node {
     update *update;
     lamport_timestamp lts;
     struct update_node *next;
+    struct update_node *prev;
 } update_node;
 
 typedef struct client_node {
@@ -38,7 +39,8 @@ typedef struct line_node {
     update_node *append_update_node;
     liker_node likers_list_head; // TODO: consider keeping this list sorted, so could use a tail pointer to quickly check if the username already is in list.
     lamport_timestamp lts;
-    struct line_node *next;   
+    struct line_node *next;  
+    struct line_node *prev; 
 } line_node;
 
 typedef struct room_node {
@@ -49,7 +51,7 @@ typedef struct room_node {
     client_node my_clients_head;
     client_node other_clients_head;
     line_node lines_list_head;
-    line_node *twenty_fifth_oldest_line; // Consider instead implementing a doubly-linked list so can count from end? 
+    line_node *lines_list_tail;
 } room_node;
 
 
