@@ -64,4 +64,6 @@ liker_node * get_liker_node(line_node *line_node);
 liker_node * append_liker_node(line_node *line_node);
 room_node * get_chat_room_node(char *chat_room);
 void handle_append_update(update *update);
+room_node * append_chat_room_node(char *chat_room);
+
 #endif
