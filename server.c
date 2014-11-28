@@ -36,6 +36,7 @@ FILE        *fd = NULL;
 
 
 room_node room_list_head; // Should I make this the lobby?
+room_node *room_list_tail;
 update_node update_list_head;
 update_node *update_list_tail;
 
@@ -54,6 +55,7 @@ int main(int argc, char *argv[]) {
     /* Set up list of rooms (set up the lobby) */
     room_list_head.next = NULL;
     room_list_head.lines_list_tail = NULL;
+    room_list_tail = &room_list_head;
 
     /* Set up list of updates */
     update_list_head.next = NULL;
@@ -92,7 +94,7 @@ void handle_append_update(update *update) {
     room_node *room_node = get_chat_room_node(update->chat_room);
     // TODO:*****check if room_node is NULL. then the chat room DNE
     if (room_node == NULL) {
-        // TODO: create chat room
+        room_node = append_chat_room_node(update->chat_room);
     }
     
     /* TODO: Extract this to external function for getting/adding to line_list*/
@@ -151,11 +153,13 @@ void handle_like_update(update *update) {
     room_node *room_node = get_chat_room_node(update->chat_room);
     // TODO:*****check if room_node is NULL. then the chat room DNE
     if (room_node == NULL) {
-        // TODO: create chat room
+        room_node = append_chat_room_node(update->chat_room);
     }
     /* TODO: Extract this to external function for getting/adding to line_list*/
     line_node *line_list_itr = &(room_node->lines_list_head);
-    /* TODO: if make lines_list doubly linked, iterate from the back, as this is more likely where likes will occur */
+    /* TODO: if make lines_list doubly linked, iterate from the back, as this is more likely where likes will occur 
+     * This will require changing the intial line_list_itr, and how a new line_node would be inserted,
+     * because the tail pointer does not point to a sentinal */
     while (line_list_itr->next != NULL 
               && compare_lts(line_list_itr->next->lts, target_lts) < 0) {
         line_list_itr = line_list_itr->next;
@@ -235,11 +239,29 @@ liker_node * append_liker_node(line_node *line_node) {
 }
 
 room_node * get_chat_room_node(char *chat_room) {
-    room_node *itr = &room_list_head;
+    /* First room is the lobby. */
+    room_node *itr = room_list_head.next;
     while (itr != NULL && strcmp(itr->chat_room, chat_room) != 0) {
         itr = itr->next;
     }
     return itr;
+}
+
+room_node * append_chat_room_node(char *chat_room) {
+    /* TODO: consider keeping chat room list sorted by name of chat room */
+    room_node *new_room;
+    if ((new_room = malloc(sizeof(room_node))) == NULL) {
+        perror("malloc error: new room node\n");
+        Bye();
+    } 
+
+    new_room->next = NULL;
+    new_room->lines_list_tail = NULL;
+    room_list_tail->next = new_room;
+    room_list_tail = new_room;
+    strcpy(new_room->chat_room, chat_room);
+
+    return new_room;
 }
 
 /* This method will attempt to add the given update to the update list if possible.
