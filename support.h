@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include "sp.h"
 
 /* CONSTANT DEFINITIONS */
 
@@ -22,7 +23,6 @@
 #define MAX_ROOM_NAME_LENGTH    20
 #define MAX_LINE_LENGTH         80
 #define MAX_MESS_LEN            100000
-#define MAX_GROUPS              100000
 
 /* TYPE DEFINITIONS */
 
@@ -68,9 +68,37 @@ typedef struct {
     char chat_room[MAX_ROOM_NAME_LENGTH];
     update_payload payload;
 } update;
-
 #define UPDATE_SIZE_WITHOUT_PAYLOAD = sizeof(update)-sizeof(update_payload)
 
+// Update node
+typedef struct update_node {
+    update *update;
+    lamport_timestamp lts;
+    struct update_node *next;
+    struct update_node *prev;
+} update_node;
+
+// Client node
+typedef struct client_node {
+    char client_group[MAX_GROUP_NAME];  // TODO: Replace with join update? Would be for use with other server's clients
+    update_node *join_update;
+    struct client_node *next;
+} client_node;
+
+// Liker node
+typedef struct liker_node {
+    update_node *like_update_node;
+    struct liker_node *next;
+} liker_node;
+
+// Line node
+typedef struct line_node {
+    update_node *append_update_node;
+    liker_node likers_list_head; // TODO: consider keeping this list sorted, so could use a tail pointer to quickly check if the username already is in list.
+    lamport_timestamp lts;
+    struct line_node *next;
+    struct line_node *prev;
+} line_node;
 
 /* FUNCTION PROTOTYPES */
 

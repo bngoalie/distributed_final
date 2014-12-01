@@ -18,32 +18,6 @@
 
 /* TYPE DEFINITIONS */
 
-typedef struct update_node {
-    update *update;
-    lamport_timestamp lts;
-    struct update_node *next;
-    struct update_node *prev;
-} update_node;
-
-typedef struct client_node {
-    char client_group[MAX_GROUP_NAME];  // TODO: Replace with join update? Would be for use with other server's clients
-    update_node *join_update;
-    struct client_node *next;
-} client_node;
-
-typedef struct liker_node {
-    update_node *like_update_node;
-    struct liker_node *next;
-} liker_node;
-
-typedef struct line_node {
-    update_node *append_update_node;
-    liker_node likers_list_head; // TODO: consider keeping this list sorted, so could use a tail pointer to quickly check if the username already is in list.
-    lamport_timestamp lts;
-    struct line_node *next;  
-    struct line_node *prev; 
-} line_node;
-
 typedef struct room_node {
     char chat_room[MAX_ROOM_NAME_LENGTH];
     /* TODO: consider char[] for spread group for chat room isntead of recomputing it everytime want to send message to clients*/

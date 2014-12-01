@@ -26,6 +26,8 @@ char    room_group[MAX_ROOM_NAME_LENGTH];
 bool    connected = 0;
 int     server_id;
 mailbox mbox;
+line_node   lines_list_head;
+line_node   *lines_list_tail;
 
 /* Main */
 int main(){
@@ -108,16 +110,18 @@ void parse_update(){
 
     // Process based on type
     if(Is_regular_mess(service_type)){
-        
         switch(((update *)mess)->type){
             case 0:
-
+                process_append((update *)(&mess[0]));
                 break;
             case 1:
-
+                process_like((update *)(&mess[0]));
                 break;
             case 2:
-
+                process_join((update *)(&mess[0]));
+                break;
+            default:
+                printf("Error: received unknown update type!\n");
                 break;
         }   
     }else if(Is_membership_mess(service_type)){
@@ -127,17 +131,49 @@ void parse_update(){
 }
 
 /* Process append update from server */
-void process_append(update append_update){
-   // TODO: Implement 
+void process_append(update *append_update){
+    // Local vars
+    line_node *line_list_itr = &lines_list_head;
+    line_node *tmp;    
+
+    // Iterate through lines to find insertion point, if any
+    while(line_list_itr->next != NULL &&    // TODO: Count lines!
+            compare_lts(line_list_itr->next->lts, append_update->lts) < 0){
+        line_list_itr = line_list_itr->next;
+    }
+    // If the line doesn't exist yet and is relevant, insert it
+    if(line_list_itr->next == NULL ||
+            compare_lts(append_update->lts, line_list_itr->next->lts) != 0)
+        if((tmp=malloc(sizeof(*line_list_itr))) == NULL){ // malloc new node
+            printf("Error: failed to malloc line_node\n");
+            close_client();
+        }
+        // Set previous and next nodes for new node
+        tmp->prev = line_list_itr;
+        tmp->next = line_list_itr->next;
+        // Link adjacent nodes to new node
+        if(tmp->next != NULL)
+            tmp->next->prev = tmp;
+        else
+            lines_list_tail = tmp;
+        line_list_itr->next = tmp;
+        tmp->lts = append_update->lts;
+        // TODO: Do I need to malloc update_node (and update itself)?
+        // Confused by malloc / sizeof syntax -> * or no?
+        update_node *new_update_node = malloc(sizeof(update_node));
+        new_update_node->update = malloc(sizeof(update));
+        memcpy(new_update_node->update, append_update, sizeof(update));
+        tmp->append_update_node = new_update_node; 
+     
 }
 
 /* Process like update from server */
-void process_like(update like_update){
+void process_like(update *like_update){
     // TODO: Implement
 }
 
 /* Process join update from server */
-void process_join(update join_update) {
+void process_join(update *join_update) {
     // TODO: Implement
 }
 
@@ -202,6 +238,7 @@ void connect_to_server(int new_id){
         // Start event handler
         E_handle_events();
     }
+    // TODO: We're joining a lobby, clear the lines data structure!
     // TODO: Need to confirm that server itself is running. Expect some sort of ack? 
 }
 
@@ -214,10 +251,12 @@ void join_chat_room(char *room_name){
     if(connected){
         // TODO: Message server to indicate room change
         
-        // Leave current room group // TODO: join first, then leave?
+        // Leave current room group // TODO: should join first, then leave old group?
         get_lobby_group(server_id, lobby);
-        if(strcmp(&room_group[0], lobby)) // don't leave lobby
-             SP_leave(mbox, &room_group[0]);
+        if(strcmp(&room_group[0], lobby)){ // don't leave lobby
+            SP_leave(mbox, &room_group[0]);
+            printf("Leaving room group %s\n", &room_group[0]);
+        }
      
         // Join new room group
         get_room_group(server_id, room_name, &room_group[0]);
@@ -231,6 +270,7 @@ void join_chat_room(char *room_name){
     }else{
         printf("Error: must be connected to a server to join a room\n");
     }
+    // TODO: clear previous lines data structure!!
 }
 
 /* Change username */
