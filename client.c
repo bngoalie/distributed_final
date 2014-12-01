@@ -23,23 +23,29 @@
 
 /* Globals */
 // Spread and connectivity globals
-char    username[MAX_USERNAME_LENGTH]; // TODO: Define macros for lengths?
-char    spread_name[40];
-char    private_group[40];
-char    room_group[MAX_ROOM_NAME_LENGTH];
-bool    connected = 0;
-int     server_id;
-mailbox mbox;
+char        username[MAX_USERNAME_LENGTH]; // TODO: Define macros for lengths?
+char        spread_name[40];
+char        private_group[40];
+char        room_group[MAX_ROOM_NAME_LENGTH];
+bool        connected = 0;
+int         server_id;
+mailbox     mbox;
 // Room data structures globals
 line_node   lines_list_head;            // Sentinel head, points to newest line
 line_node   *lines_list_tail;           // Tail pointer to oldest line
 int         num_lines;                      // Total number of lines (up to 25)
+// Message buffer
+char        *mess;
 
 /* Main */
 int main(){
     // Initialize globals
     strcpy(&username[0], "");
     num_lines = 0;
+    if((mess = malloc(sizeof(server_client_mess))) == NULL){
+        printf("Failed to malloc message buffer\n");
+        close_client();
+    }
     // Initialize event handling system (user input only)
     E_init(); 
     E_attach_fd(0, READ_FD, parse_input, 0, NULL, LOW_PRIORITY);
@@ -96,7 +102,7 @@ void parse_input(){
 
 /* Parse update from server */
 void parse_update(){
-    char    mess[MAX_MESS_LEN];
+    update  *new_update;
     char    sender[MAX_GROUP_NAME];
     char    target_groups[MAX_GROUPS][MAX_GROUP_NAME];
     int     num_groups;
@@ -117,20 +123,28 @@ void parse_update(){
 
     // Process based on type
     if(Is_regular_mess(service_type)){
-        switch(((update *)mess)->type){
-            case 0:
-                process_append((update *)(&mess[0]));
-                break;
-            case 1:
-                process_like((update *)(&mess[0]));
-                break;
-            case 2:
-                process_join((update *)(&mess[0]));
-                break;
-            default:
-                printf("Error: received unknown update type!\n");
-                break;
-        }   
+        if(((server_client_mess *)mess)->type == 0){
+            new_update = ((update *)(((server_client_mess *)mess)->payload));
+            for(unsigned int i = 0; i < ((ret-sizeof(int))/sizeof(update)); i++){
+                switch(new_update->type){
+                    case 0:
+                        process_append(new_update);
+                        break;
+                    case 1:
+                        process_like(new_update);
+                        break;
+                    case 2:
+                        process_join(new_update);
+                        break;
+                    default:
+                        printf("Error: received unknown update type!\n");
+                        break;
+                }
+                new_update++;
+            }
+        }else{
+            // TODO: Handle ack!
+        }
     }else if(Is_membership_mess(service_type)){
         // TODO: Handle membership changes 
     }else
