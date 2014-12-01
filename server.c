@@ -133,8 +133,11 @@ void handle_update(update *update, char *private_spread_group) {
 
 void handle_append_update(update *update) {
     room_node *room_node = get_chat_room_node(update->chat_room);
+    int line_node_already_existed = 1;
+    int should_send_to_client = 1;
     // TODO:*****check if room_node is NULL. then the chat room DNE
     if (room_node == NULL) {
+        should_send_to_client = 0;
         room_node = append_chat_room_node(update->chat_room);
     }
     
@@ -148,7 +151,9 @@ void handle_append_update(update *update) {
     if (line_list_itr->next == NULL 
             || compare_lts(update->lts, line_list_itr->next->lts) != 0) {
         /* The line does not exist yet. */
+        line_node_already_existed = 0;
         line_node *tmp;
+        
         if ((tmp = malloc(sizeof(*line_list_itr))) == NULL) {
            perror("malloc error: new line_node\n");
            Bye();
@@ -162,6 +167,9 @@ void handle_append_update(update *update) {
         tmp->lts = update->lts;
         line_list_itr->next = tmp; 
         /* TODO: determine if should add to update list first instead. */
+    }
+    if (compare_lts(update->lts, line_list_itr->next->lts) == 0
+                && line_list_itr->next->append_update_node == NULL) {
         update_node *new_update_node = NULL;
         if (tmp->next == NULL) {
             room_node->lines_list_tail = tmp;
@@ -183,8 +191,17 @@ because this append update was succesfully inserted into data structure\n");
         }
         /* New update succesfully inserted into list of updates. Now need to insert into data structure */
         tmp->append_update_node = new_update_node;
-        /* TODO: Write new_update_node to disk*/ 
-        /* TODO: send update to chat room group */
+        /* TODO: Write new_update_node to disk*/
+
+
+        if (should_send_to_client == 1) {
+            update * update_payload = NULL;
+            
+            /* TODO: send update to chat room group */
+            if (line_node_already_existed == 1) {
+                /* TODO: Send likes for already existing line node */
+            }
+        }
     }
 }
 
