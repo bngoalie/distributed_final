@@ -22,6 +22,7 @@
 
 /* DEFINITIONS */
 
+#define MAX_GROUPS 5
 #define DAEMON1 "10010@128.220.224.89"
 #define DAEMON2 "10010@128.220.224.90"
 #define DAEMON3 "10010@128.220.224.91"
@@ -29,19 +30,7 @@
 #define DAEMON5 "10010@128.220.224.93"
  
 /* TYPE DEFINITIONS */
-
-typedef struct username_node {
-    char string[MAX_USERNAME_LENGTH];
-    struct username_node *next_node;
-} username_node;
-
-typedef struct line_node {
-    char message[MAX_LINE_LENGTH];
-    char poster[MAX_USERNAME_LENGTH];
-    username_node liker_list_head; // Consider using a counter
-    lamport_timestamp lts;
-    struct line_node *next_node;
-} line_node;
+// none at this time...
 
 /* FUNCTION PROTOTYPES */
 
@@ -50,6 +39,15 @@ void parse_input();
 
 /* Parse update from server */
 void parse_update();
+
+/* Process append update from server */
+void process_append(update *append_update);
+
+/* Process like update from server */
+void process_like(update *like_update);
+
+/* Process join update from server */
+void process_join(update *join_update);
 
 /* Connects to server with given server_id */
 void connect_to_server(int server_id);

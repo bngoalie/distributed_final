@@ -9,6 +9,11 @@
 
 #include "support.h"
 
+/* Compares the two given lamport timestamps 
+ *  Returns 1 if lts1 comes after lts2
+ *  Returns 0 if both are identical
+ *  Returns -1 if lts1 comes before lts2
+ */
 int compare_lts(lamport_timestamp lts1, lamport_timestamp lts2) {
     if (lts1.counter < lts2.counter) {
         return -1;
@@ -20,15 +25,17 @@ int compare_lts(lamport_timestamp lts1, lamport_timestamp lts2) {
     return 0;
 }
 
+/* Get Spread group for sending to specific server */
 void get_single_server_group_name(int server_id, char *group) {
     if (group == NULL) {
         return;
     }
     char buffer[10] = "";
-    sprintf(buffer, "server%d", server_id);
+    sprintf(buffer, "s%d", server_id);
     strcpy(group, &buffer[0]);
 }
 
+/* Get spread group for specific chat room and server */
 void get_room_group(int server_id, char *room_name, char *room_group) {
     if (room_group == NULL || room_name == NULL) {
         return;
@@ -38,6 +45,7 @@ void get_room_group(int server_id, char *room_name, char *room_group) {
     strcat(room_group, &room_name[0]); 
 }
 
+/* Get Spread group for a server lobby */
 void get_lobby_group(int server_id, char *group){
     char buffer[10] = "";
     sprintf(buffer, "lobby%d", server_id);

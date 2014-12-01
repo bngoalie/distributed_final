@@ -14,23 +14,32 @@
  *
  *  MORE IMPORTANTLY, need to define functions for processing received
  *  updates. Establish all required data structures for lines and such.
+ *
+ * TODO: implement function to clear all lines and relevant globals
+ *  Call on a successful connect or room change
  */
 
 #include "client.h"
 
 /* Globals */
-char    username[MAX_USERNAME_LENGTH]; // TODO: Define macros for lengths
+// Spread and connectivity globals
+char    username[MAX_USERNAME_LENGTH]; // TODO: Define macros for lengths?
 char    spread_name[40];
 char    private_group[40];
-char    room_group[40];
+char    room_group[MAX_ROOM_NAME_LENGTH];
 bool    connected = 0;
 int     server_id;
 mailbox mbox;
+// Room data structures globals
+line_node   lines_list_head;            // Sentinel head, points to newest line
+line_node   *lines_list_tail;           // Tail pointer to oldest line
+int         num_lines;                      // Total number of lines (up to 25)
 
 /* Main */
 int main(){
-    // Initialize blank username
+    // Initialize globals
     strcpy(&username[0], "");
+    num_lines = 0;
     // Initialize event handling system (user input only)
     E_init(); 
     E_attach_fd(0, READ_FD, parse_input, 0, NULL, LOW_PRIORITY);
@@ -40,13 +49,14 @@ int main(){
 /* Parse user input */
 void parse_input(){
     // Local vars
-    char    input[100];   
+    char input[100];   
  
     // Clear old input, get new input from stdin
     for(unsigned int i=0; i < sizeof(input); i++) 
         input[i] = 0;
     if(fgets(input, 130, stdin) == NULL)
         close_client();
+    strtok(input, "\n"); // remove newline 
 
     // Parse command:
     switch(input[0]){
@@ -86,7 +96,111 @@ void parse_input(){
 
 /* Parse update from server */
 void parse_update(){
-    // TODO: all that jazz
+    char    mess[MAX_MESS_LEN];
+    char    sender[MAX_GROUP_NAME];
+    char    target_groups[MAX_GROUPS][MAX_GROUP_NAME];
+    int     num_groups;
+    int     service_type;
+    int16   mess_type;
+    int     endian_mismatch;
+    int     ret;
+
+    // Receive message   
+    service_type = 0;
+    ret = SP_receive(mbox, &service_type, sender, MAX_GROUPS, &num_groups, target_groups,
+        &mess_type, &endian_mismatch, sizeof(mess), mess);
+    if(ret < 0)
+    {
+        SP_error(ret);
+        close_client();
+    }
+
+    // Process based on type
+    if(Is_regular_mess(service_type)){
+        switch(((update *)mess)->type){
+            case 0:
+                process_append((update *)(&mess[0]));
+                break;
+            case 1:
+                process_like((update *)(&mess[0]));
+                break;
+            case 2:
+                process_join((update *)(&mess[0]));
+                break;
+            default:
+                printf("Error: received unknown update type!\n");
+                break;
+        }   
+    }else if(Is_membership_mess(service_type)){
+        // TODO: Handle membership changes 
+    }else
+        printf("Error: received message with unknown service type\n");
+}
+
+/* Process append update from server */
+void process_append(update *append_update){
+    // Local vars
+    line_node   *line_list_itr = &lines_list_head;
+    line_node   *tmp;
+    int         itr_lines = 0; 
+    update_node *new_update_node;
+    
+    // Iterate through lines to find insertion point, if one exists
+    while(line_list_itr->next != NULL &&
+            compare_lts(line_list_itr->next->lts, append_update->lts) > 0){
+        line_list_itr = line_list_itr->next;
+        itr_lines++;
+    }
+    // Insert line if doesn't already exist and isn't too old (25+ lines)
+    if((line_list_itr->next == NULL && itr_lines < 25) ||
+            compare_lts(append_update->lts, line_list_itr->next->lts) != 0){
+        if((tmp=malloc(sizeof(*line_list_itr))) == NULL){ // malloc new node
+            printf("Error: failed to malloc line_node\n");
+            close_client();
+        }
+        // Link new nodes to adjacent node
+        tmp->prev = line_list_itr;
+        tmp->next = line_list_itr->next;
+        // Link adjacent nodes to new node
+        if(tmp->next != NULL)
+            tmp->next->prev = tmp;
+        else
+            lines_list_tail = tmp;
+        line_list_itr->next = tmp;
+        // Set timestamp
+        tmp->lts = append_update->lts;
+        // Create update node for line node
+        if((new_update_node = malloc(sizeof(update_node))) == NULL){
+            printf("Error: failed to malloc update_node\n");
+            close_client();
+        }
+        if((new_update_node->update = malloc(sizeof(update))) == NULL){
+            printf("Error: failed to malloc update\n");
+            close_client();
+        }
+        memcpy(new_update_node->update, append_update, sizeof(update));
+        tmp->append_update_node = new_update_node; 
+        // Increment total number of lines and check limit
+        if(++num_lines > 25){
+            // Remove 26th line
+            tmp = lines_list_tail;
+            lines_list_tail = lines_list_tail->prev;
+            lines_list_tail->next = NULL;
+            // Free update node from 26th line
+            free(tmp->append_update_node);
+            // TODO: Free likers list, too! (Anything else we're missing?)
+        }        
+    }
+}
+
+/* Process like update from server */
+void process_like(update *like_update){
+    // TODO: Implement
+}
+
+/* Process join update from server */
+void process_join(update *join_update) {
+    // TODO: Implement
 }
 
 /* Connect to server with given server_id */
@@ -150,6 +264,7 @@ void connect_to_server(int new_id){
         // Start event handler
         E_handle_events();
     }
+    // TODO: We're joining a lobby, call function to clear lines & relevant globals!
     // TODO: Need to confirm that server itself is running. Expect some sort of ack? 
 }
 
@@ -162,10 +277,12 @@ void join_chat_room(char *room_name){
     if(connected){
         // TODO: Message server to indicate room change
         
-        // Leave current room group // TODO: join first, then leave?
+        // Leave current room group // TODO: should join first, then leave old group?
         get_lobby_group(server_id, lobby);
-        if(strcmp(&room_group[0], lobby)) // don't leave lobby
-             SP_leave(mbox, &room_group[0]);
+        if(strcmp(&room_group[0], lobby)){ // don't leave lobby
+            SP_leave(mbox, &room_group[0]);
+            printf("Leaving room group %s\n", &room_group[0]);
+        }
      
         // Join new room group
         get_room_group(server_id, room_name, &room_group[0]);
@@ -173,14 +290,13 @@ void join_chat_room(char *room_name){
         if(ret != 0){
             SP_error(ret);
             printf("Error: unable to join group %s\n", &room_group[0]);
+        }else{
+            printf("Joined room %s\n", room_name);
         }
     }else{
         printf("Error: must be connected to a server to join a room\n");
     }
-    // TODO: Any additional steps client-side? Don't think so:
-    // Server should automatically send recent updates upon seeing client
-    // join the group, or upon the server itself joining the new group.
-    // Client should auto-construct its data structure as updates are received
+    // TODO: clear previous lines data structure!!
 }
 
 /* Change username */
