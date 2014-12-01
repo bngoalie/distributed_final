@@ -190,10 +190,12 @@ because this append update was succesfully inserted into data structure\n");
 
 
 void handle_like_update(update *update) {
+    int should_send_to_client = 1;
     lamport_timestamp target_lts = ((like_payload *)(&(update->payload)))->lts;
     room_node *room_node = get_chat_room_node(update->chat_room);
     // TODO:*****check if room_node is NULL. then the chat room DNE
     if (room_node == NULL) {
+        should_send_to_client = 0;
         room_node = append_chat_room_node(update->chat_room);
     }
     /* TODO: Extract this to external function for getting/adding to line_list*/
@@ -207,6 +209,7 @@ void handle_like_update(update *update) {
     }
     if (line_list_itr->next == NULL 
             || compare_lts(target_lts, line_list_itr->next->lts) != 0) {
+        should_send_to_client = 0;
         /* The line does not exist yet. */
         line_node *tmp;
         if ((tmp = malloc(sizeof(*line_list_itr))) == NULL) {
@@ -248,7 +251,9 @@ void handle_like_update(update *update) {
             /* New update succesfully inserted into list of updates. Now need to insert into data structure */
             liker_node->like_update_node = new_update_node;
             /* TODO: Write new_update_node to disk*/ 
-            /* TODO: send update to chat room group */
+            if (should_send_to_client == 1) {
+                /* TODO: send update to chat room group */
+            }
         }
     }            
 }
