@@ -70,6 +70,15 @@ typedef struct {
 } update;
 #define UPDATE_SIZE_WITHOUT_PAYLOAD = sizeof(update)-sizeof(update_payload)
 
+/* Server-to-client message
+ * 0: update
+ * 1: ack
+ */
+typedef struct {
+    int type;
+    char payload[MAX_MESS_LEN-sizeof(int)];
+} server_client_mess;
+
 // Update node
 typedef struct update_node {
     update *update;
