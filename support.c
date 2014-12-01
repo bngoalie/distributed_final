@@ -25,7 +25,7 @@ void get_single_server_group_name(int server_id, char *group) {
         return;
     }
     char buffer[10] = "";
-    sprintf(buffer, "server%d", server_id);
+    sprintf(buffer, "s%d", server_id);
     strcpy(group, &buffer[0]);
 }
 

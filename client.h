@@ -51,6 +51,15 @@ void parse_input();
 /* Parse update from server */
 void parse_update();
 
+/* Process append update from server */
+void process_append(update append_update);
+
+/* Process like update from server */
+void process_like(update like_update);
+
+/* Process join update from server */
+void process_join(update join_update);
+
 /* Connects to server with given server_id */
 void connect_to_server(int server_id);
 

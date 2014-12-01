@@ -22,37 +22,42 @@
 #define MAX_ROOM_NAME_LENGTH    20
 #define MAX_LINE_LENGTH         80
 #define MAX_MESS_LEN            100000
+#define MAX_GROUPS              100000
 
 /* TYPE DEFINITIONS */
 
+// Lamport timestamp
 typedef struct {
     int counter;
     int server_id;
     int server_seq;
 } lamport_timestamp;
 
+// Update payload
 typedef struct {
     char payload[MAX_LINE_LENGTH];
 } update_payload;
 
+// Append payload
 typedef struct {
     char message[MAX_LINE_LENGTH];
 } append_payload;
 #define APPEND_PAYLOAD_SIZE sizeof(append_payload)
 
+// Like payload
 typedef struct {
     int toggle; // 0 for unlike, 1 for like
     lamport_timestamp lts; // We index messages by lts, not a global line number (at least for now).
 } like_payload;
 #define LIKE_PAYLOAD_SIZE sizeof(like_payload)
 
-
+// Join payload
 typedef struct {
     int toggle; // 0 for leave, 1 for join
 } join_payload;
 #define JOIN_PAYLOAD_SIZE sizeof(join_payload)
 
-/* Type values:
+/* Update
  * 0: append
  * 1: like
  * 2: join */

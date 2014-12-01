@@ -19,10 +19,10 @@
 #include "client.h"
 
 /* Globals */
-char    username[MAX_USERNAME_LENGTH]; // TODO: Define macros for lengths
+char    username[MAX_USERNAME_LENGTH]; // TODO: Define macros for lengths?
 char    spread_name[40];
 char    private_group[40];
-char    room_group[40];
+char    room_group[MAX_ROOM_NAME_LENGTH];
 bool    connected = 0;
 int     server_id;
 mailbox mbox;
@@ -40,13 +40,14 @@ int main(){
 /* Parse user input */
 void parse_input(){
     // Local vars
-    char    input[100];   
+    char input[100];   
  
     // Clear old input, get new input from stdin
     for(unsigned int i=0; i < sizeof(input); i++) 
         input[i] = 0;
     if(fgets(input, 130, stdin) == NULL)
         close_client();
+    strtok(input, "\n"); // remove newline 
 
     // Parse command:
     switch(input[0]){
@@ -86,7 +87,58 @@ void parse_input(){
 
 /* Parse update from server */
 void parse_update(){
-    // TODO: all that jazz
+    char    mess[MAX_MESS_LEN];
+    char    sender[MAX_GROUP_NAME];
+    char    target_groups[MAX_GROUPS][MAX_GROUP_NAME];
+    int     num_groups;
+    int     service_type;
+    int16   mess_type;
+    int     endian_mismatch;
+    int     ret;
+
+    // Receive message   
+    service_type = 0;
+    ret = SP_receive(mbox, &service_type, sender, MAX_GROUPS, &num_groups, target_groups,
+        &mess_type, &endian_mismatch, sizeof(mess), mess);
+    if(ret < 0)
+    {
+        SP_error(ret);
+        close_client();
+    }
+
+    // Process based on type
+    if(Is_regular_mess(service_type)){
+        
+        switch(((update *)mess)->type){
+            case 0:
+
+                break;
+            case 1:
+
+                break;
+            case 2:
+
+                break;
+        }   
+    }else if(Is_membership_mess(service_type)){
+        // TODO: Handle membership changes 
+    }else
+        printf("Error: received message with unknown service type\n");
+}
+
+/* Process append update from server */
+void process_append(update append_update){
+   // TODO: Implement 
+}
+
+/* Process like update from server */
+void process_like(update like_update){
+    // TODO: Implement
+}
+
+/* Process join update from server */
+void process_join(update join_update) {
+    // TODO: Implement
 }
 
 /* Connect to server with given server_id */
@@ -173,14 +225,12 @@ void join_chat_room(char *room_name){
         if(ret != 0){
             SP_error(ret);
             printf("Error: unable to join group %s\n", &room_group[0]);
+        }else{
+            printf("Joined room %s\n", room_name);
         }
     }else{
         printf("Error: must be connected to a server to join a room\n");
     }
-    // TODO: Any additional steps client-side? Don't think so:
-    // Server should automatically send recent updates upon seeing client
-    // join the group, or upon the server itself joining the new group.
-    // Client should auto-construct its data structure as updates are received
 }
 
 /* Change username */
