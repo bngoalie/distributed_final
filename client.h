@@ -30,7 +30,7 @@
 #define DAEMON5 "10010@128.220.224.93"
  
 /* TYPE DEFINITIONS */
-// N/A
+// none at this time...
 
 /* FUNCTION PROTOTYPES */
 

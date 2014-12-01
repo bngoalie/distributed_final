@@ -14,11 +14,15 @@
  *
  *  MORE IMPORTANTLY, need to define functions for processing received
  *  updates. Establish all required data structures for lines and such.
+ *
+ * TODO: implement function to clear all lines and relevant globals
+ *  Call on a successful connect or room change
  */
 
 #include "client.h"
 
 /* Globals */
+// Spread and connectivity globals
 char    username[MAX_USERNAME_LENGTH]; // TODO: Define macros for lengths?
 char    spread_name[40];
 char    private_group[40];
@@ -26,13 +30,16 @@ char    room_group[MAX_ROOM_NAME_LENGTH];
 bool    connected = 0;
 int     server_id;
 mailbox mbox;
-line_node   lines_list_head;
-line_node   *lines_list_tail;
+// Room data structures globals
+line_node   lines_list_head;            // Sentinel head, points to newest line
+line_node   *lines_list_tail;           // Tail pointer to oldest line
+int         num_lines;                      // Total number of lines (up to 25)
 
 /* Main */
 int main(){
-    // Initialize blank username
+    // Initialize globals
     strcpy(&username[0], "");
+    num_lines = 0;
     // Initialize event handling system (user input only)
     E_init(); 
     E_attach_fd(0, READ_FD, parse_input, 0, NULL, LOW_PRIORITY);
@@ -133,22 +140,25 @@ void parse_update(){
 /* Process append update from server */
 void process_append(update *append_update){
     // Local vars
-    line_node *line_list_itr = &lines_list_head;
-    line_node *tmp;    
-
-    // Iterate through lines to find insertion point, if any
-    while(line_list_itr->next != NULL &&    // TODO: Count lines!
-            compare_lts(line_list_itr->next->lts, append_update->lts) < 0){
+    line_node   *line_list_itr = &lines_list_head;
+    line_node   *tmp;
+    int         itr_lines = 0; 
+    update_node *new_update_node;
+    
+    // Iterate through lines to find insertion point, if one exists
+    while(line_list_itr->next != NULL &&
+            compare_lts(line_list_itr->next->lts, append_update->lts) > 0){
         line_list_itr = line_list_itr->next;
+        itr_lines++;
     }
-    // If the line doesn't exist yet and is relevant, insert it
-    if(line_list_itr->next == NULL ||
-            compare_lts(append_update->lts, line_list_itr->next->lts) != 0)
+    // Insert line if doesn't already exist and isn't too old (25+ lines)
+    if((line_list_itr->next == NULL && itr_lines < 25) ||
+            compare_lts(append_update->lts, line_list_itr->next->lts) != 0){
         if((tmp=malloc(sizeof(*line_list_itr))) == NULL){ // malloc new node
             printf("Error: failed to malloc line_node\n");
             close_client();
         }
-        // Set previous and next nodes for new node
+        // Link new nodes to adjacent node
         tmp->prev = line_list_itr;
         tmp->next = line_list_itr->next;
         // Link adjacent nodes to new node
@@ -157,14 +167,30 @@ void process_append(update *append_update){
         else
             lines_list_tail = tmp;
         line_list_itr->next = tmp;
+        // Set timestamp
         tmp->lts = append_update->lts;
-        // TODO: Do I need to malloc update_node (and update itself)?
-        // Confused by malloc / sizeof syntax -> * or no?
-        update_node *new_update_node = malloc(sizeof(update_node));
-        new_update_node->update = malloc(sizeof(update));
+        // Create update node for line node
+        if((new_update_node = malloc(sizeof(update_node))) == NULL){
+            printf("Error: failed to malloc update_node\n");
+            close_client();
+        }
+        if((new_update_node->update = malloc(sizeof(update))) == NULL){
+            printf("Error: failed to malloc update\n");
+            close_client();
+        }
         memcpy(new_update_node->update, append_update, sizeof(update));
         tmp->append_update_node = new_update_node; 
-     
+        // Increment total number of lines and check limit
+        if(++num_lines > 25){
+            // Remove 26th line
+            tmp = lines_list_tail;
+            lines_list_tail = lines_list_tail->prev;
+            lines_list_tail->next = NULL;
+            // Free update node from 26th line
+            free(tmp->append_update_node);
+            // TODO: Free likers list, too! (Anything else we're missing?)
+        }        
+    }
 }
 
 /* Process like update from server */
@@ -238,7 +264,7 @@ void connect_to_server(int new_id){
         // Start event handler
         E_handle_events();
     }
-    // TODO: We're joining a lobby, clear the lines data structure!
+    // TODO: We're joining a lobby, call function to clear lines & relevant globals!
     // TODO: Need to confirm that server itself is running. Expect some sort of ack? 
 }
 

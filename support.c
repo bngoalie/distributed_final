@@ -10,7 +10,7 @@
 #include "support.h"
 
 /* Compares the two given lamport timestamps 
- *  Returns 1 if lts2 comes before lts1
+ *  Returns 1 if lts1 comes after lts2
  *  Returns 0 if both are identical
  *  Returns -1 if lts1 comes before lts2
  */
