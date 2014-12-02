@@ -22,7 +22,9 @@
 
 /* DEFINITIONS */
 
-#define MAX_GROUPS 5
+#define MAX_GROUPS      5
+#define TIMEOUT_SEC     0
+#define TIMEOUT_USEC    500
 #define DAEMON1 "10010@128.220.224.89"
 #define DAEMON2 "10010@128.220.224.90"
 #define DAEMON3 "10010@128.220.224.91"
@@ -51,6 +53,9 @@ void process_join(update *join_update);
 
 /* Connects to server with given server_id */
 void connect_to_server(int server_id);
+
+/* Check initial lobby membership for server's presence */
+void check_for_server();
 
 /* Joins chat room with given room_name */
 void join_chat_room(char *room_name);

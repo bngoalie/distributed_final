@@ -26,7 +26,7 @@ int compare_lts(lamport_timestamp lts1, lamport_timestamp lts2) {
 }
 
 /* Get Spread group for sending to specific server */
-void get_single_server_group_name(int server_id, char *group) {
+void get_single_server_group(int server_id, char *group) {
     if (group == NULL) {
         return;
     }
@@ -40,7 +40,7 @@ void get_room_group(int server_id, char *room_name, char *room_group) {
     if (room_group == NULL || room_name == NULL) {
         return;
     }
-    get_single_server_group_name(server_id, room_group);
+    get_single_server_group(server_id, room_group);
     //strcat(room_group, "_");
     strcat(room_group, &room_name[0]); 
 }
