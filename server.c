@@ -33,6 +33,8 @@ int         num_processes;
 int         process_index;
 int         seq;
 FILE        *fd = NULL;
+server_client_mess server_client_mess_buff;
+
 
 
 room_node room_list_head; // Should I make this the lobby?
@@ -111,6 +113,8 @@ int main(int argc, char *argv[]) {
 void handle_update(update *update, char *private_spread_group) {
     int update_seq = (update->lts).server_seq;
     int update_server_id = (update->lts).server_id;
+    /* TODO: We do not want to receive our own updates. 
+     * Should enter (update_server_id != process_index) logic here? */
     if (most_recent_server_updates[update_server_id] < update_seq) {
         most_recent_server_updates[update_server_id] = update_seq;
         int update_type = update->type;
@@ -131,24 +135,29 @@ void handle_update(update *update, char *private_spread_group) {
     }
 }
 
-void handle_append_update(update *update) {
-    room_node *room_node = get_chat_room_node(update->chat_room);
+void handle_append_update(update *new_update) {
+    room_node *room_node = get_chat_room_node(new_update->chat_room);
+    int line_node_already_existed = 1;
+    int should_send_to_client = 1;
     // TODO:*****check if room_node is NULL. then the chat room DNE
     if (room_node == NULL) {
-        room_node = append_chat_room_node(update->chat_room);
+        should_send_to_client = 0;
+        room_node = append_chat_room_node(new_update->chat_room);
     }
     
     /* TODO: Extract this to external function for getting/adding to line_list*/
     line_node *line_list_itr = &(room_node->lines_list_head);
     /* TODO: if make lines_list doubly linked, iterate from the back, as this is more likely where likes will occur */
     while (line_list_itr->next != NULL 
-              && compare_lts(line_list_itr->next->lts, update->lts) < 0) {
+              && compare_lts(line_list_itr->next->lts, new_update->lts) < 0) {
         line_list_itr = line_list_itr->next;
     }
     if (line_list_itr->next == NULL 
-            || compare_lts(update->lts, line_list_itr->next->lts) != 0) {
+            || compare_lts(new_update->lts, line_list_itr->next->lts) != 0) {
         /* The line does not exist yet. */
+        line_node_already_existed = 0;
         line_node *tmp;
+        
         if ((tmp = malloc(sizeof(*line_list_itr))) == NULL) {
            perror("malloc error: new line_node\n");
            Bye();
@@ -159,14 +168,18 @@ void handle_append_update(update *update) {
             tmp->next->prev = tmp;
         } 
         tmp->append_update_node = NULL;
-        tmp->lts = update->lts;
+        tmp->lts = new_update->lts;
         line_list_itr->next = tmp; 
         /* TODO: determine if should add to update list first instead. */
+    }
+    if (compare_lts(new_update->lts, line_list_itr->next->lts) == 0
+                && line_list_itr->next->append_update_node == NULL) {
         update_node *new_update_node = NULL;
+        line_node *tmp = line_list_itr->next;
         if (tmp->next == NULL) {
             room_node->lines_list_tail = tmp;
             /* This line is the newest, try to add to end of update queue*/
-            new_update_node = add_update_to_queue(update, update_list_tail, update_list_tail);
+            new_update_node = add_update_to_queue(new_update, update_list_tail, update_list_tail);
         }
         if (new_update_node == NULL) {
             /* find first line older than new line where there is an allocated update_node*/
@@ -174,7 +187,7 @@ void handle_append_update(update *update) {
             while (start_line->append_update_node == NULL && start_line->prev != NULL) {
                start_line = start_line->prev; 
             }
-            new_update_node = add_update_to_queue(update, start_line->append_update_node, update_list_tail); 
+            new_update_node = add_update_to_queue(new_update, start_line->append_update_node, update_list_tail); 
         }
         if (new_update_node == NULL) {
             perror("there was a problem inserting a new update to queue of updates. there shouldn't be a problem \
@@ -183,17 +196,49 @@ because this append update was succesfully inserted into data structure\n");
         }
         /* New update succesfully inserted into list of updates. Now need to insert into data structure */
         tmp->append_update_node = new_update_node;
-        /* TODO: Write new_update_node to disk*/ 
-        /* TODO: send update to chat room group */
+        /* TODO: Write new_update_node to disk*/
+
+        if (should_send_to_client == 1) {
+            update *update_payload = (update *)(server_client_mess_buff.payload);
+            int num_updates_to_send = 0;
+            server_client_mess_buff.type = 0;   
+            memcpy(update_payload, new_update, sizeof(update));
+            num_updates_to_send++;
+            update_payload++; 
+            /* TODO: send update to chat room group */
+            if (line_node_already_existed == 1) {
+                /* TODO: Send likes for already existing line node */
+                /* TODO: if there are so many likes, that the num of updates 
+                 * would be too large, need to create second message*/
+                liker_node *like_node_itr = &(tmp->likers_list_head);
+                while (like_node_itr->next != NULL) {
+                    /* only send like updates if they are for liking, because 
+                     * sending an unlike when the client doesn't have it yet 
+                     * is pointless */
+                    if (like_node_itr->next->like_update_node != NULL 
+                            && like_node_itr->next->like_update_node->update != NULL
+                            && ((like_payload *)&(like_node_itr->next->like_update_node->update->payload))->toggle == 1)  {
+                        memcpy(update_payload, like_node_itr->next->like_update_node->update, sizeof(update));
+                        num_updates_to_send++;
+                        update_payload++;
+                    }
+                }
+            }
+            char chat_room_group[MAX_GROUP_NAME];
+            get_room_group(process_index, room_node->chat_room, chat_room_group);
+            int ret = SP_multicast(Mbox, FIFO_MESS, chat_room_group, 0, sizeof(int)+num_updates_to_send*sizeof(update), (char *) &server_client_mess_buff);
+        }
     }
 }
 
 
 void handle_like_update(update *update) {
+    int should_send_to_client = 1;
     lamport_timestamp target_lts = ((like_payload *)(&(update->payload)))->lts;
     room_node *room_node = get_chat_room_node(update->chat_room);
     // TODO:*****check if room_node is NULL. then the chat room DNE
     if (room_node == NULL) {
+        should_send_to_client = 0;
         room_node = append_chat_room_node(update->chat_room);
     }
     /* TODO: Extract this to external function for getting/adding to line_list*/
@@ -207,6 +252,7 @@ void handle_like_update(update *update) {
     }
     if (line_list_itr->next == NULL 
             || compare_lts(target_lts, line_list_itr->next->lts) != 0) {
+        should_send_to_client = 0;
         /* The line does not exist yet. */
         line_node *tmp;
         if ((tmp = malloc(sizeof(*line_list_itr))) == NULL) {
@@ -248,7 +294,9 @@ void handle_like_update(update *update) {
             /* New update succesfully inserted into list of updates. Now need to insert into data structure */
             liker_node->like_update_node = new_update_node;
             /* TODO: Write new_update_node to disk*/ 
-            /* TODO: send update to chat room group */
+            if (should_send_to_client == 1) {
+                /* TODO: send update to chat room group */
+            }
         }
     }            
 }
