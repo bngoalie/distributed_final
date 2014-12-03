@@ -2,7 +2,7 @@
  * client.c
  * Client for distributed chat service
  *
- * Ben Glickman and Ethan Bennis
+ * Ethan Bennis and Ben Glickman
  * CS437 - Distributed Systems
  * Johns Hopkins University
  */
@@ -323,7 +323,6 @@ void check_for_server(){
     // Receive message
     server_present = false;
     service_type = 0;
-    printf("mess size: %d\n", (int)sizeof(server_client_mess));
     ret = SP_receive(mbox, &service_type, sender, MAX_GROUPS, &num_groups, target_groups,
         &mess_type, &endian_mismatch, sizeof(server_client_mess), mess);
     if(ret < 0)
@@ -449,20 +448,36 @@ void like_line(int line_num, bool like){
     // TODO: message update to server
     printf("Setting like status of line %d to %s\n", 
         line_num, like ? "true" : "false");
+    // Iterate through lines list to line number
 
-    // TODO: Does the client have to determine if a like is valid???
+    // Get LTS of desired line
+    
+    // Cast buffer to update, set type & fields (LTS and toggle)
+    
+    // Send to server
+
+    // TODO: Does the client have to determine if a like is valid? OPTIONAL!
 }
 
 /* Send local username to server */
 void send_username_update(){
     printf("Placeholder - sending username update\n");
     // TODO: message new username to server (need struct)
+    
+    // Cast buffer to update, set type & fields (username)
+
+    // Send to server
 }
 
 /* Update room display */
 void update_display(){
     // TODO: Clear screen, iterate through and display lines
-    // Iterate through lines data structure
+    
+    // Iterate through lines data structure, build string array
+    
+    // Room and members at top, numbers text and likers on each line
+    
+    // TODO: Change printf messages to status string, printed at bottom
 }
 
 /* Close the client */

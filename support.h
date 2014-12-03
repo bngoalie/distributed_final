@@ -57,6 +57,16 @@ typedef struct {
 } join_payload;
 #define JOIN_PAYLOAD_SIZE sizeof(join_payload)
 
+// Username payload
+typedef struct {
+    char username[MAX_USERNAME_LENGTH];
+} username_payload;
+
+// Room payload
+typedef struct {
+    char room[MAX_ROOM_NAME_LENGTH];
+} room_payload;
+
 /* (Ordered/Server) Update
  * 0: append
  * 1: like
@@ -70,7 +80,13 @@ typedef struct {
 } update;
 #define UPDATE_SIZE_WITHOUT_PAYLOAD = sizeof(update)-sizeof(update_payload)
 
-/* (Unordered/Client) Update */
+/* (Unordered/Client) Update 
+ * 0: append
+ * 1: like
+ * 2: join
+ * 3: username
+ * 4: room
+ * */
 typedef struct{
     int type;
     char username[MAX_USERNAME_LENGTH];
