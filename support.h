@@ -57,7 +57,7 @@ typedef struct {
 } join_payload;
 #define JOIN_PAYLOAD_SIZE sizeof(join_payload)
 
-/* Update
+/* (Ordered/Server) Update
  * 0: append
  * 1: like
  * 2: join */
@@ -69,6 +69,14 @@ typedef struct {
     update_payload payload;
 } update;
 #define UPDATE_SIZE_WITHOUT_PAYLOAD = sizeof(update)-sizeof(update_payload)
+
+/* (Unordered/Client) Update */
+typedef struct{
+    int type;
+    char username[MAX_USERNAME_LENGTH];
+    update_payload payload;
+} client_update;
+
 
 /* Server-to-client message
  * 0: update
@@ -89,7 +97,7 @@ typedef struct update_node {
 
 // Client node
 typedef struct client_node {
-    char client_group[MAX_GROUP_NAME];  // TODO: Replace with join update? Would be for use with other server's clients
+    char client_group[MAX_GROUP_NAME];  // TODO: Replace with join update?
     update_node *join_update;
     struct client_node *next;
 } client_node;

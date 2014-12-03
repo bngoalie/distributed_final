@@ -8,14 +8,7 @@
  */
 
 /*
- * TODO (In addition to those listed below):
- *  Need to define structs for various messages to be sent from client to
- *  server such as username changes, room change indicators, etc...
- *
- *  MORE IMPORTANTLY, need to define functions for processing received
- *  updates. Establish all required data structures for lines and such.
- *
- * TODO: implement function to clear all lines and relevant globals
+ * TODO: implement function(s) to clear all lines and relevant globals
  *  Call on a successful connect or room change
  */
 
@@ -75,7 +68,7 @@ void parse_input(){
             connect_to_server(atoi((char *)&input[2]));  
             break;
         case 'j':   // Join chat room
-            join_chat_room(&input[2]); 
+            join_chat_room(&input[2], false); 
             break;
         case 'a':   // Append line
             append_line(&input[2]);
@@ -145,10 +138,11 @@ void parse_update(){
                 new_update++;
             }
         }else{
-            // TODO: Handle ack!
+            // TODO: Don't need acks anymore?
         }
     }else if(Is_membership_mess(service_type)){
-        // TODO: Handle membership changes 
+        // TODO: Handle membership changes
+        //  More specifically: detect loss of server 
     }else
         printf("Error: received message with unknown service type\n");
 }
@@ -228,7 +222,8 @@ void connect_to_server(int new_id){
     sp_time timeout;
     timeout.sec = 0;
     timeout.usec = 500000;
-    const char* daemons[5] = {DAEMON1, DAEMON2, DAEMON3, DAEMON4, DAEMON5}; 
+    char prev_room[MAX_ROOM_NAME_LENGTH];
+    const char *daemons[5] = {DAEMON1, DAEMON2, DAEMON3, DAEMON4, DAEMON5}; 
     
     // Store current mailbox if already connected TODO: verify this will work 
     if(connected)
@@ -256,6 +251,7 @@ void connect_to_server(int new_id){
             printf("Error: unable to connect to daemon for server %d\n", new_id);
         }else{
             // If successful, join lobby group
+            strcpy(&prev_room[0], &room_group[0]);
             get_lobby_group(new_id, &room_group[0]); // lobby group needs to have a distinct name
             ret = SP_join(mbox, &room_group[0]);
             if(ret != 0){
@@ -264,6 +260,7 @@ void connect_to_server(int new_id){
                 if(connected){ // if previously connected, revert
                     mbox = mbox_temp;
                     E_attach_fd(mbox, READ_FD, parse_update, 0, NULL, HIGH_PRIORITY);
+                    strcpy(&room_group[0], &prev_room[0]);
                 }
                 printf("Error: unable to join lobby group for server %d\n", new_id);
             }else{
@@ -274,15 +271,13 @@ void connect_to_server(int new_id){
                 // Set up event handler for server-check function
                 E_attach_fd(mbox, READ_FD, check_for_server, 0, NULL, HIGH_PRIORITY);
                 E_handle_events();
-        
-                // TODO: IS THIS VISIBLE?    
-                printf("Returned from event handling\n");
-                printf("Blah blah blah\n");
                 // Progress or revert, depending on server presence
                 if(server_present){
                     // If previously connected, disconnect from previous daemon
-                    if(connected)
+                    if(connected){
                         SP_disconnect(mbox_temp);
+                        join_chat_room(&room_group[0], true);
+                    }
                     // Indicate success
                     connected = true;
                     printf("Server %d detected in lobby group\n", server_id);
@@ -298,6 +293,7 @@ void connect_to_server(int new_id){
                         printf("Reverting to server %d\n", server_id);
                         mbox = mbox_temp;
                         E_attach_fd(mbox, READ_FD, parse_update, 0, NULL, HIGH_PRIORITY);
+                        strcpy(&room_group[0], &prev_room[0]);
                     }
                 }
             }
@@ -306,9 +302,8 @@ void connect_to_server(int new_id){
         E_attach_fd(0, READ_FD, parse_input, 0, NULL, LOW_PRIORITY);
         E_handle_events();
     }
-    // TODO: We're joining a lobby, call function to clear lines & relevant globals!
-    // TODO: If previously in a non-lobby room, immediately re-join said room
-    // TODO: Need to confirm that server itself is running. Expect some sort of ack? 
+    // TODO: New server/room, call function to clear lines & relevant globals!
+    // TODO: If previously in a non-lobby room, immediately re-join said room?
 }
 
 /* Check initial lobby join membership message for server's presence */
@@ -340,22 +335,22 @@ void check_for_server(){
 
     // Check for server's presence in group
     if(Is_membership_mess(service_type))
-    {
+    {   
+        // Get membership info for lobby
         ret = SP_get_memb_info(mess, service_type, &memb_info);
         if(ret < 0){
             printf("Error: invalid membership message body");
             SP_error(ret);
             close_client();
         }
+        // Iterate through members, compare with server name
         for(int i=0; i < num_groups; i++ ){
-            printf("\t%s\n", &target_groups[i][0]);
             member = strtok(&target_groups[i][0], "#");
             get_single_server_group(server_id, &server[0]);
             if(strcmp(server, member) == 0){
-                server_present = true;
+                server_present = true; // mark if found
             }
         }
-        printf("grp id is %d %d %d\n",memb_info.gid.id[0], memb_info.gid.id[1], memb_info.gid.id[2] );
     }else{
         printf("Error: first message on connect was non-membership\n");
         close_client();
@@ -363,39 +358,48 @@ void check_for_server(){
 
     // Reset event handler
     E_exit_events();
-    printf("Exited events after checking for server in initial membership\n");
     E_init();       
 }
 
 /* Join chat room with given room_name */
-void join_chat_room(char *room_name){
+void join_chat_room(char *room_name, bool is_group_name){
     int     ret;    
-    char    lobby[10] = "";
+    char    lobby[MAX_ROOM_NAME_LENGTH] = "";
+    char    prev_group[MAX_ROOM_NAME_LENGTH];
 
     // Ensure client is connected to a server
     if(connected){
         // TODO: Message server to indicate room change
-        
-        // Leave current room group // TODO: should join first, then leave old group?
-        get_lobby_group(server_id, lobby);
-        if(strcmp(&room_group[0], lobby)){ // don't leave lobby
-            SP_leave(mbox, &room_group[0]);
-            printf("Leaving room group %s\n", &room_group[0]);
-        }
+       
+        // Store current room group
+        strcpy(&prev_group[0], &room_group[0]);
      
         // Join new room group
-        get_room_group(server_id, room_name, &room_group[0]);
-        ret = SP_join(mbox, &room_group[0]);
+        if(is_group_name){
+            strcpy(&room_group[0], room_name);
+            ret = SP_join(mbox, room_name);
+        }else{
+            get_room_group(server_id, room_name, &room_group[0]);
+            ret = SP_join(mbox, &room_group[0]);
+        }
         if(ret != 0){
+            // Unsuccessful, revert to previous group
             SP_error(ret);
+            strcpy(&room_group[0], &prev_group[0]);
             printf("Error: unable to join group %s\n", &room_group[0]);
         }else{
+            // Successful, leave previous group
+            get_lobby_group(server_id, lobby);
+            if(strcmp(&prev_group[0], lobby)){ // don't leave lobby
+                SP_leave(mbox, &prev_group[0]);
+                printf("(Left room group %s)\n", &prev_group[0]);
+            }
             printf("Joined room %s\n", room_name);
         }
     }else{
         printf("Error: must be connected to a server to join a room\n");
     }
-    // TODO: clear previous lines data structure!!
+    // TODO: clear previous lines!
 }
 
 /* Change username */
@@ -415,15 +419,38 @@ void change_username(char *new_username){
 
 /* Append new line to current chat room */
 void append_line(char *new_line){
-    // TODO: implement actual message append
-    printf("Placeholder - appending new line %s\n", new_line);
+    // Local vars
+    client_update *append;
+    char lobby[MAX_ROOM_NAME_LENGTH];
+    int ret;
+    // Confirm client is connected and in chat room (not a lobby)
+    get_lobby_group(server_id, lobby);
+    if(!connected || strcmp(&room_group[0], lobby) == 0){
+        printf("Error: Client must be connected and in a chat room to post!\n");
+    }else{
+        // Cast buffer to update, set fields
+        append = (client_update *)mess;
+        append->type = 0;
+        strcpy(&(append->username[0]), &username[0]);
+        strcpy((char *)&(append->payload), new_line);
+
+        // Send update to current server
+        ret = SP_multicast(mbox, FIFO_MESS, &room_group[0], 0, sizeof(client_update), mess);
+        if(ret < 0){
+            SP_error(ret);
+            close_client();
+        }
+        printf("Sent append update\n");
+    }
 }
 
 /* Set like status for line number */
 void like_line(int line_num, bool like){ 
     // TODO: message update to server
-    printf("Placeholder - setting like status of line %d to %s\n", 
+    printf("Setting like status of line %d to %s\n", 
         line_num, like ? "true" : "false");
+
+    // TODO: Does the client have to determine if a like is valid???
 }
 
 /* Send local username to server */

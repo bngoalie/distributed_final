@@ -57,8 +57,9 @@ void connect_to_server(int server_id);
 /* Check initial lobby membership for server's presence */
 void check_for_server();
 
-/* Joins chat room with given room_name */
-void join_chat_room(char *room_name);
+/* Joins chat room with given room_name 
+ * If is_group_name is true, doesn't append server prefix */
+void join_chat_room(char *room_name, bool is_group_name);
 
 /* Change local username */
 void change_username(char *new_username);
