@@ -445,18 +445,43 @@ void append_line(char *new_line){
 
 /* Set like status for line number */
 void like_line(int line_num, bool like){ 
-    // TODO: message update to server
-    printf("Setting like status of line %d to %s\n", 
-        line_num, like ? "true" : "false");
-    // Iterate through lines list to line number
+    // Local vars
+    client_update *like_update;
+    like_payload *payload;
+    line_node *line_itr;
+    int ret;
 
-    // Get LTS of desired line
-    
-    // Cast buffer to update, set type & fields (LTS and toggle)
-    
-    // Send to server
+    // Sanity check range
+    if(num_lines == 0)
+        printf("There are no lines in this chat room yet!\n");
+    else if(line_num < 1 || line_num > num_lines){
+        printf("Line number must be within range %d to %d\n", 1, num_lines);
+    }else{
+        // Iterate through lines list to line number
+        line_itr = lines_list_tail;
+        for(int i = 1; i < line_num; i++){
+            line_itr = line_itr->prev;
+            if(line_itr == NULL)
+                printf("Error: hit null node while iterating lines - this shouldn't happen\n");
+        }
 
-    // TODO: Does the client have to determine if a like is valid? OPTIONAL!
+        // Cast buffer to update, set type & fields (LTS and toggle)
+        like_update = (client_update *)mess;
+        like_update->type = 1;
+        strcpy(&(like_update->username[0]), &username[0]);
+        payload = (like_payload *)&(like_update->payload);
+        payload->toggle = like;
+        payload->lts = line_itr->lts;
+
+        // Send update to current server
+        ret = SP_multicast(mbox, FIFO_MESS, &room_group[0], 0, sizeof(client_update), mess);
+        if(ret < 0){
+            SP_error(ret);
+            close_client();
+        }
+        printf("Setting like status of line %d to %s\n", 
+            line_num, like ? "true" : "false");
+    }
 }
 
 /* Send local username to server */
