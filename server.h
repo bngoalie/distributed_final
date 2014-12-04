@@ -51,17 +51,16 @@ typedef start_merge_payload update_request_payload;
 /* The start node will be one behind where it actually wants to start looking,
  * because list has a sentinal node used of looking one node ahead. 
  * TODO: if end is set to null, default to end of queue (or just ignore it) */
-update_node * add_update_to_queue(update *update, update_node *start, update_node *end);
-void handle_like_update(update *update);
+void handle_like_update(update *new_update);
 liker_node * get_liker_node(line_node *line_node);
 liker_node * append_liker_node(line_node *line_node);
 room_node * get_chat_room_node(char *chat_room);
-void handle_append_update(update_node *new_update_node);
+void handle_append_update(update *new_update);
 room_node * append_chat_room_node(char *chat_room);
 client_node * add_client_to_list_if_relevant(client_node *client_list_head, 
                                                 char *group, update *join_update); 
-void handle_join_update(update *update, char *client_spread_group);
-void handle_update(update *update, char *private_spread_group);
+void handle_join_update(update *new_update, char *client_spread_group);
+void handle_update(update *new_update, char *private_spread_group);
 update_node * store_update(update *update);
 
 
