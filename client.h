@@ -70,6 +70,12 @@ void append_line(char *new_line);
 /* Set like status for line number */
 void like_line(int line_num, bool like);
 
+/* Request history */
+void request_history();
+
+/* Display current (Spread) view */
+void display_view();
+
 /* Send username to server */
 void send_username_update();
 

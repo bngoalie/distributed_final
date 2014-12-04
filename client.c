@@ -8,8 +8,12 @@
  */
 
 /*
- * TODO: implement function(s) to clear all lines and relevant globals
+ * TODO: implement function(s) to clear all lines / updates /  relevant globals
  *  Call on a successful connect or room change
+ *
+ * TODO: Put most printf statements in ifdef DEFINE blocks
+ *
+ * TODO: TEST EVERYTHING
  */
 
 #include "client.h"
@@ -80,7 +84,7 @@ void parse_input(){
             like_line(atoi((char *)&input[2]), false);
             break;
         case 'h':   // Display history
-            // TODO: Define function(s) for displaying history
+           request_history(); 
             break;
         case 'v':   // Display view
             // TODO: Define function for displaying current view
@@ -203,14 +207,59 @@ void process_append(update *append_update){
     }
 }
 
-/* Process like update from server */
+/* Process like update from server TODO: DOUBLE CHECK THIS LOGIC PLEASE */
 void process_like(update *like_update){
-    // TODO: Implement
+    // Local vars
+    like_payload *payload;
+    line_node *line_itr;
+    liker_node *liker_itr;
+    liker_node *tmp;
+    bool line_found;
+
+    // Cast payload to like payload
+    payload = (like_payload *)&(like_update->payload);
+
+    // Find relevant line (if exists) via LTS
+    line_itr = lines_list_tail->prev; // iterator starts at oldest message
+    line_found = false;
+    while(line_itr != NULL && !line_found){ // TODO: add logic: if LTS is older, line doesn't exist
+        if(!compare_lts(line_itr->lts, payload->lts))
+            line_found = true;
+        else
+            line_itr = line_itr->prev;
+    }    
+
+    // Add/remove like from line, if exists
+    if(line_found){
+        // If like toggle is 1, add username to liker list
+        if(payload->toggle == 1){
+            // Create and link new liker node
+            tmp = malloc(sizeof(liker_node)); // TODO: add safety checks to mallocs
+            tmp->next = line_itr->likers_list_head.next;
+            line_itr->likers_list_head.next = tmp;
+            // Malloc and set fields 
+            tmp->like_update_node = malloc(sizeof(update_node));
+            tmp->like_update_node->update = malloc(sizeof(update));
+            memcpy(&(tmp->like_update_node->update), like_update, sizeof(update));
+        }else{
+            // If like toggle is 0, find username and remove node from list
+            // Iterate through likers list
+            liker_itr = line_itr->likers_list_head.next;
+            while(liker_itr != NULL){
+                // Remove liker if found
+                if(!strcmp(&(liker_itr->like_update_node->update->username[0]),
+                        &(like_update->username[0]))){
+                    // TODO: Add remove logic. The list is NOT doubly linked... crap.
+                }
+            }
+        }
+    }else
+        printf("Notification: Received like update for an old or missing line\n");
 }
 
 /* Process join update from server */
 void process_join(update *join_update) {
-    // TODO: Implement
+    // TODO: Implement. Also declare global data structure. Head of linked list???
 }
 
 /* Connect to server with given server_id */
@@ -240,7 +289,7 @@ void connect_to_server(int new_id){
         E_init();       
         // Connect to Spread daemon
         printf("Connecting to server %d...\n", new_id);
-        ret = SP_connect_timeout(daemons[new_id - 1], "s1", 0, 1, // TODO: change test to NULL
+        ret = SP_connect_timeout(daemons[new_id - 1], "s1", 0, 1, // TODO: change "s1" to NULL
             &mbox, private_group, timeout);
         if(ret != ACCEPT_SESSION){
             // If unable to connect to daemon, indicate failure
@@ -449,49 +498,108 @@ void like_line(int line_num, bool like){
     client_update *like_update;
     like_payload *payload;
     line_node *line_itr;
+    liker_node *like_itr;
+    bool redundant;
+    char lobby[MAX_ROOM_NAME_LENGTH];
     int ret;
 
-    // Sanity check range
-    if(num_lines == 0)
-        printf("There are no lines in this chat room yet!\n");
-    else if(line_num < 1 || line_num > num_lines){
-        printf("Line number must be within range %d to %d\n", 1, num_lines);
-    }else{
-        // Iterate through lines list to line number
-        line_itr = lines_list_tail;
-        for(int i = 1; i < line_num; i++){
-            line_itr = line_itr->prev;
-            if(line_itr == NULL)
-                printf("Error: hit null node while iterating lines - this shouldn't happen\n");
+    // Check if connected and in chat room
+    get_lobby_group(server_id, lobby);
+    if(!connected || strcmp(&room_group[0], lobby) == 0){
+        printf("Error: Client must be connected and in a chat room to like a line!\n");
+    }else{ 
+        // Sanity check line
+        if(num_lines == 0)
+            printf("There are no lines in this chat room yet!\n");
+        else if(line_num < 1 || line_num > num_lines){
+            printf("Line number must be within range %d to %d\n", 1, num_lines);
+        }else{
+            // Iterate through lines list to line number
+            line_itr = lines_list_tail;
+            for(int i = 1; i < line_num; i++){
+                line_itr = line_itr->prev;
+                if(line_itr == NULL)
+                    printf("Error: hit null node while iterating lines - this shouldn't happen\n");
+            }
+            
+            // Check for redundant like/unlike
+            redundant = false;
+            like_itr = line_itr->likers_list_head.next;
+            while(like_itr != NULL){
+                payload = (like_payload *)&(like_itr->like_update_node->update->payload);
+                if(!strcmp(like_itr->like_update_node->update->username, &username[0]) &&
+                        payload->toggle == like)
+                    redundant = true;
+            }
+            if(redundant)
+                printf("Error: This username already %s line %d!\n",
+                    like ? "liked" : "unliked", line_num);
+            else{
+                // Cast buffer to update, set type & fields (LTS and toggle)
+                like_update = (client_update *)mess;
+                like_update->type = 1;
+                strcpy(&(like_update->username[0]), &username[0]);
+                payload = (like_payload *)&(like_update->payload);
+                payload->toggle = like;
+                payload->lts = line_itr->lts;
+
+                // Send update to current server
+                ret = SP_multicast(mbox, FIFO_MESS, &room_group[0], 0, sizeof(client_update), mess);
+                if(ret < 0){
+                    SP_error(ret);
+                    close_client();
+                }
+                printf("Setting like status of line %d to %s\n", 
+                    line_num, like ? "true" : "false");
+            }
         }
+    }
+}
 
-        // Cast buffer to update, set type & fields (LTS and toggle)
-        like_update = (client_update *)mess;
-        like_update->type = 1;
-        strcpy(&(like_update->username[0]), &username[0]);
-        payload = (like_payload *)&(like_update->payload);
-        payload->toggle = like;
-        payload->lts = line_itr->lts;
+/* Request history TODO: Implement*/
+void request_history(){
+    // Local vars
 
-        // Send update to current server
+    // Send history request message to server
+
+    // Clear everything
+    
+    // Set flag indicating NOT to remove old messages
+    
+    // TODO: implement logic in other functions to not clear if flag set
+    
+    // TODO: after end of history is received (special update?), clear flag
+    
+    // Immediately return to normal behavior???
+}
+
+/* Display current (Spread) view */
+void display_view(){
+    // TODO: Implement
+}
+
+/* Send local username to server */
+void send_username_update(){
+    // Local vars
+    client_update *username_update;
+    int ret;    
+
+    if(!connected)
+        printf("Error: attempting to send username update when disconnected\n");
+    else{
+        // Cast buffer to update, set type & username (note: no payload)
+        username_update = (client_update *)mess;
+        username_update->type = 3;
+        strcpy(&(username_update->username[0]), &username[0]);
+
+        // Send to server
         ret = SP_multicast(mbox, FIFO_MESS, &room_group[0], 0, sizeof(client_update), mess);
         if(ret < 0){
             SP_error(ret);
             close_client();
         }
-        printf("Setting like status of line %d to %s\n", 
-            line_num, like ? "true" : "false");
+        printf("Sending username update\n");
     }
-}
-
-/* Send local username to server */
-void send_username_update(){
-    printf("Placeholder - sending username update\n");
-    // TODO: message new username to server (need struct)
-    
-    // Cast buffer to update, set type & fields (username)
-
-    // Send to server
 }
 
 /* Update room display */

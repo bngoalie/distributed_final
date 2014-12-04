@@ -57,11 +57,6 @@ typedef struct {
 } join_payload;
 #define JOIN_PAYLOAD_SIZE sizeof(join_payload)
 
-// Username payload
-typedef struct {
-    char username[MAX_USERNAME_LENGTH];
-} username_payload;
-
 // Room payload
 typedef struct {
     char room[MAX_ROOM_NAME_LENGTH];
@@ -86,6 +81,7 @@ typedef struct {
  * 2: join
  * 3: username
  * 4: room
+ * 5: history request
  * */
 typedef struct{
     int type;
