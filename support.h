@@ -110,19 +110,19 @@ typedef struct update_node {
 // Client node
 typedef struct client_node {
     char client_group[MAX_GROUP_NAME];  // TODO: Replace with join update?
-    update_node *join_update;
+    update *join_update;
     struct client_node *next;
 } client_node;
 
 // Liker node
 typedef struct liker_node {
-    update_node *like_update_node;
+    update *like_update;
     struct liker_node *next;
 } liker_node;
 
 // Line node
 typedef struct line_node {
-    update_node *append_update_node;
+    update *append_update;
     liker_node likers_list_head; // TODO: consider keeping this list sorted, so could use a tail pointer to quickly check if the username already is in list.
     lamport_timestamp lts;
     struct line_node *next;
