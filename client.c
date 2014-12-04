@@ -29,9 +29,10 @@ bool        server_present;
 int         server_id;
 mailbox     mbox;
 // Room data structures globals
-line_node   lines_list_head;    // Sentinel head, points to newest line
+line_node   lines_list_head;    // Sentinel head, next points to newest line
 line_node   *lines_list_tail;   // Tail pointer to oldest line
-int         num_lines;          // Total number of lines (up to 25)
+liker_node  likers_list_head;   // Sentinel head, next points to user (unordered)
+int         num_lines;          // Total number of lines (up to 25 normally)
 // Message buffer
 char        *mess;
 
@@ -249,7 +250,7 @@ void process_like(update *like_update){
                 // Remove liker if found
                 if(!strcmp(&(liker_itr->like_update_node->update->username[0]),
                         &(like_update->username[0]))){
-                    // TODO: Add remove logic. The list is NOT doubly linked... crap.
+                    // TODO: Add remove logic. The list is NOT doubly linked... crap. TODO
                 }
             }
         }
@@ -259,7 +260,20 @@ void process_like(update *like_update){
 
 /* Process join update from server */
 void process_join(update *join_update) {
-    // TODO: Implement. Also declare global data structure. Head of linked list???
+    // Local vars
+    join_payload *payload;    
+    client_node *tmp;
+
+    // Cast payload to join payload
+    payload = (join payload*)&(join_update->payload)
+
+    // Process according to state change
+    if(payload->toggle == 1){
+        // If joining, create new node (and malloc update)
+        tmp = malloc(sizeof(client_node));
+ 
+    }else{
+        // If leaving, find first username match and remove node (and free update)
 }
 
 /* Connect to server with given server_id */
