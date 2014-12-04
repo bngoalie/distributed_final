@@ -123,13 +123,13 @@ void handle_update(update *new_update, char *private_spread_group) {
         int update_type = new_update->type;
         switch (update_type) {
             case 0:
-                handle_append_update(new_update_node);
+                handle_append_update(new_update_node->update);
                 break;
             case 1:
-                handle_like_update(new_update);
+                handle_like_update(new_update_node->update);
                 break;
             case 2:
-                handle_join_update(new_update, private_spread_group);
+                handle_join_update(new_update_node->update, private_spread_group);
                 break;
             default:
                 perror("unexpected update type\n");
@@ -138,8 +138,7 @@ void handle_update(update *new_update, char *private_spread_group) {
     }
 }
 
-void handle_append_update(update_node *new_update_node) {
-    update *new_update = new_update_node->update;
+void handle_append_update(update *new_update) {
     room_node *room_node = get_chat_room_node(new_update->chat_room);
     int line_node_already_existed = 1;
     int should_send_to_client = 1;
@@ -161,7 +160,8 @@ void handle_append_update(update_node *new_update_node) {
         /* The line does not exist yet. */
         line_node_already_existed = 0;
         line_node *tmp;
-        
+       
+        /* TODO: change to sizeof(line_node)*/ 
         if ((tmp = malloc(sizeof(*line_list_itr))) == NULL) {
            perror("malloc error: new line_node\n");
            Bye();
@@ -171,24 +171,23 @@ void handle_append_update(update_node *new_update_node) {
         if (tmp->next != NULL) {
             tmp->next->prev = tmp;
         } 
-        tmp->append_update_node = NULL;
+        tmp->append_update = NULL;
         tmp->lts = new_update->lts;
         line_list_itr->next = tmp; 
         /* TODO: determine if should add to update list first instead. */
     }
     if (compare_lts(new_update->lts, line_list_itr->next->lts) == 0
-                && line_list_itr->next->append_update_node == NULL) {
+                && line_list_itr->next->append_update == NULL) {
         line_node *tmp = line_list_itr->next;
         if (tmp->next == NULL) {
             room_node->lines_list_tail = tmp;
         }
-        tmp->append_update_node = new_update_node;
+        tmp->append_update = new_update;
         /* TODO: Write new_update_node to disk*/
 
         if (should_send_to_client == 1) {
             update *update_payload = (update *)(server_client_mess_buff.payload);
             int num_updates_to_send = 0;
-            server_client_mess_buff.type = 0;   
             memcpy(update_payload, new_update, sizeof(update));
             num_updates_to_send++;
             update_payload++; 
@@ -202,10 +201,9 @@ void handle_append_update(update_node *new_update_node) {
                     /* only send like updates if they are for liking, because 
                      * sending an unlike when the client doesn't have it yet 
                      * is pointless */
-                    if (like_node_itr->next->like_update_node != NULL 
-                            && like_node_itr->next->like_update_node->update != NULL
-                            && ((like_payload *)&(like_node_itr->next->like_update_node->update->payload))->toggle == 1)  {
-                        memcpy(update_payload, like_node_itr->next->like_update_node->update, sizeof(update));
+                    if (like_node_itr->next->like_update != NULL 
+                            && ((like_payload *)&(like_node_itr->next->like_update->payload))->toggle == 1)  {
+                        memcpy(update_payload, like_node_itr->next->like_update, sizeof(update));
                         num_updates_to_send++;
                         update_payload++;
                     }
@@ -219,14 +217,14 @@ void handle_append_update(update_node *new_update_node) {
 }
 
 
-void handle_like_update(update *update) {
+void handle_like_update(update *new_update) {
     int should_send_to_client = 1;
-    lamport_timestamp target_lts = ((like_payload *)(&(update->payload)))->lts;
-    room_node *room_node = get_chat_room_node(update->chat_room);
+    lamport_timestamp target_lts = ((like_payload *)(&(new_update->payload)))->lts;
+    room_node *room_node = get_chat_room_node(new_update->chat_room);
     // TODO:*****check if room_node is NULL. then the chat room DNE
     if (room_node == NULL) {
         should_send_to_client = 0;
-        room_node = append_chat_room_node(update->chat_room);
+        room_node = append_chat_room_node(new_update->chat_room);
     }
     /* TODO: Extract this to external function for getting/adding to line_list*/
     line_node *line_list_itr = &(room_node->lines_list_head);
@@ -234,7 +232,7 @@ void handle_like_update(update *update) {
      * This will require changing the intial line_list_itr, and how a new line_node would be inserted,
      * because the tail pointer does not point to a sentinal */
     while (line_list_itr->next != NULL 
-              && compare_lts(line_list_itr->next->pread ssssts, target_lts) < 0) {
+              && compare_lts(line_list_itr->next->lts, target_lts) < 0) {
         line_list_itr = line_list_itr->next;
     }
     if (line_list_itr->next == NULL 
@@ -247,7 +245,7 @@ void handle_like_update(update *update) {
            Bye();
         } 
         tmp->next = line_list_itr->next;
-        tmp->append_update_node = NULL;
+        tmp->append_update = NULL;
         tmp->lts = target_lts;
         line_list_itr->next = tmp;
         tmp->prev = line_list_itr;
@@ -263,55 +261,24 @@ void handle_like_update(update *update) {
         /* need to create a new liker_node to append on end of list
          * for new like or unlike */ 
         liker_node = append_liker_node(line_list_itr->next);
+    } 
+    liker_node->like_update = new_update;
+
+    if (should_send_to_client == 1) {
+        /* TODO: send update to chat room group */
     }
-        
-    update_node *new_update_node = NULL;
-    if ((new_update_node = add_update_to_queue(update, update_list_tail, update_list_tail)) == NULL) {
-        update_node *start_node = liker_node->like_update_node;
-        if (start_node == NULL) {
-            /* search from closest line */
-            line_node *line_node_itr = line_list_itr->next;
-            while (line_node_itr->append_update_node == NULL && line_node_itr->prev != NULL) {
-                line_node_itr = line_node_itr->prev;
-            }
-            start_node = line_node_itr->append_update_node;
-        }
-        new_update_node = add_update_to_queue(update, start_node, update_list_tail); 
-        if (new_update_node != NULL) {
-            /* New update succesfully inserted into list of updates. Now need to insert into data structure */
-            liker_node->like_update_node = new_update_node;
-            /* TODO: Write new_update_node to disk*/ 
-            if (should_send_to_client == 1) {
-                /* TODO: send update to chat room group */
-            }
-        }
-    }            
 }
 
-void handle_join_update(update *update, char *client_spread_group) {
-    room_node *room_node = get_chat_room_node(update->chat_room);
+void handle_join_update(update *join_update, char *client_spread_group) {
+    room_node *room_node = get_chat_room_node(join_update->chat_room);
     if (room_node == NULL) {
-        room_node = append_chat_room_node(update->chat_room);
+        room_node = append_chat_room_node(join_update->chat_room);
     }
-    client_node *client_list_head = &(room_node->client_heads[(update->lts).server_id]);  
-    client_node *start_node = add_client_to_list_if_relevant(client_list_head, client_spread_group, update); 
-    update_node *ret_update_node = add_update_to_queue(update, start_node->join_update, update_list_tail);
-    if (ret_update_node == NULL) {
-        perror("add_to_update_queue unable to add join/leave update. this should not happen\n");
-        Bye();
-    }
-    start_node->join_update = ret_update_node;
-}
-
-/* While join's and leaves can be for the same username from different cleints,
- * joins and leaves from the same server are received in FIFO order.
- * Therefore, even when we are merging, we are receiving joins and leaves in same order. */
-client_node * add_client_to_list_if_relevant(client_node *client_list_head, 
-                                                char *group, update *join_update) {
+    client_node *client_list_head = &(room_node->client_heads[(join_update->lts).server_id]);  
     /* find first client_node that has the same username and has a different toggle value*/
     while (client_list_head->next != NULL 
-              && (strcmp(client_list_head->next->join_update->update->username, join_update->username) != 0
-              || ((join_payload *)&(client_list_head->next->join_update->update->payload))->toggle 
+              && (strcmp(client_list_head->next->join_update->username, join_update->username) != 0
+              || ((join_payload *)&(client_list_head->next->join_update->payload))->toggle 
                     != ((join_payload *)&(join_update->payload))->toggle)) {
        client_list_head = client_list_head->next; 
     }
@@ -323,20 +290,19 @@ client_node * add_client_to_list_if_relevant(client_node *client_list_head,
             Bye();
         }
         client_list_head->next->next = NULL;
-        client_list_head->next->join_update = NULL;
-        if (group != NULL) {
-            strcpy(client_list_head->next->client_group, group); 
-        }
     } 
-    return client_list_head->next;
-} 
+    client_list_head->next->join_update = join_update;
+    if (client_spread_group != NULL) {
+        strcpy(client_list_head->next->client_group, client_spread_group); 
+    }
+}
 
 /* Currently returns the liker_node associated with the given line_node. */
 liker_node * get_liker_node(line_node *line_node) {
     liker_node *liker_list_itr = &(line_node->likers_list_head);
     while (liker_list_itr->next != NULL 
-               && (liker_list_itr->next->like_update_node == NULL 
-                      || strcmp(liker_list_itr->next->like_update_node->update->username, line_node->append_update_node->update->username) != 0)) {
+               && (liker_list_itr->next->like_update == NULL 
+                      || strcmp(liker_list_itr->next->like_update->username, line_node->append_update->username) != 0)) {
         liker_list_itr = liker_list_itr->next;
     } 
     return liker_list_itr->next;
@@ -354,7 +320,7 @@ liker_node * append_liker_node(line_node *line_node) {
         Bye();
     } 
     liker_list_itr->next->next = NULL;
-    liker_list_itr->next->like_update_node = NULL;
+    liker_list_itr->next->like_update = NULL;
     return liker_list_itr->next;
 }
 
@@ -411,72 +377,12 @@ update_node * store_update(update *new_update) {
         server_updates_array[update_server_id] = new_node;
         /* TODO: consider writing to DISK HERE, so that when restart, know have the right seq. */
         return server_updates_array[update_server_id];
-    }tt
+    }
     return NULL;
 }
 
 
-/* This method will attempt to add the given update to the update list if possible.
- * If the update_node already exists, but does not have a given update, it will
- * insert the given update to the node and return the node. 
- * It will return the node upon creating a new update_node too. */
-update_node * add_update_to_queue(update *update, update_node *start, update_node *end) {
-    if (start == NULL) {
-        start = &update_list_head;
-    }     
-    if (end == NULL) {
-        end = update_list_tail;
-    }
-    
-    if (compare_lts(start->lts, update->lts) >= 0) {
-        // If the starting node is greater than the update to be added, than the update cannot be added. 
-        return NULL;
-    }
 
-    /* TODO: ensure that logic start != end is correct. */
-    while (start != end && start->next != NULL && compare_lts(update->lts, start->next->lts) < 0) {
-        start = start->next;
-    }   
-    
-    /* If to be inserted at end of list, or can be validly inserted elsewhere 
-     * between before (inclusive) the end */
-    // TODO: ***** If node exists, but update pointer is NULL, memcopy new update; 
-    update_node *new_node = NULL;
-    if (compare_lts(update->lts, start->lts) > 0 
-        && (start->next == NULL || compare_lts(update->lts, start->next->lts) < 0)) {
-        if ((new_node = malloc(sizeof(update_node))) == NULL) {
-            perror("error malloc new node.");
-            Bye();           
-        }
-        new_node->lts = update->lts;
-        new_node->next = start->next;
-        if (new_node->next != NULL) {
-            new_node->next->prev = new_node;
-        } else {
-            update_list_tail = new_node;
-        }
-        new_node->prev = start;
-        new_node->update = NULL;
-        start->next = new_node;
-    } else if (start->next != NULL 
-                  && compare_lts(update->lts, start->next->lts) == 0 
-                  && start->next->update == NULL) {
-        /* The update_node already exists for this lts, BUT there is no actual update
-         * This can occur if another update pertaining to this update was received
-         * before this update was received */
-        new_node = start->next;
-    }
-    if (new_node != NULL && new_node->update == NULL) {
-        /* TODO: Determine if will malloc earlier and then simply point new 
-         * update to given update pointer */
-        if ((new_node->update = malloc(sizeof(*update))) == NULL) {
-            perror("error malloc new update for node.");
-            Bye();           
-        }
-        memcpy(new_node->update, update, sizeof(*update));
-    }
-    return new_node;
-}
 
 static void	Read_message() {
     /* Local vars */
