@@ -41,6 +41,7 @@ room_node room_list_head; // Should I make this the lobby?
 room_node *room_list_tail;
 update_node update_list_head;
 update_node *update_list_tail;
+update_node *server_updates_array[MAX_MEMBERS];
 
 /* TODO: Intent is to keep traack of updates received from each server
  * could be simply replaced with an int array for seqs, but need to update only when receive an 
@@ -61,7 +62,11 @@ int main(int argc, char *argv[]) {
 
     /* Set up list of updates */
     update_list_head.next = NULL;
-    update_list_tail = &update_list_head;    
+    update_list_tail = &update_list_head;   
+    
+    for (int i = 0; i < MAX_MEMBERS; i++) {
+        server_updates_array[i] = NULL;
+    } 
 
     /* TODO: Read last known state from disk*/
 
@@ -110,23 +115,21 @@ int main(int argc, char *argv[]) {
 
 }
 
-void handle_update(update *update, char *private_spread_group) {
-    int update_seq = (update->lts).server_seq;
-    int update_server_id = (update->lts).server_id;
+void handle_update(update *new_update, char *private_spread_group) {
+    update_node *new_update_node = NULL;
     /* TODO: We do not want to receive our own updates. 
      * Should enter (update_server_id != process_index) logic here? */
-    if (most_recent_server_updates[update_server_id] < update_seq) {
-        most_recent_server_updates[update_server_id] = update_seq;
-        int update_type = update->type;
+    if ((new_update_node = store_update(new_update)) != NULL) {
+        int update_type = new_update->type;
         switch (update_type) {
             case 0:
-                handle_append_update(update);
+                handle_append_update(new_update_node);
                 break;
             case 1:
-                handle_like_update(update);
+                handle_like_update(new_update);
                 break;
             case 2:
-                handle_join_update(update, private_spread_group);
+                handle_join_update(new_update, private_spread_group);
                 break;
             default:
                 perror("unexpected update type\n");
@@ -135,7 +138,8 @@ void handle_update(update *update, char *private_spread_group) {
     }
 }
 
-void handle_append_update(update *new_update) {
+void handle_append_update(update_node *new_update_node) {
+    update *new_update = new_update_node->update;
     room_node *room_node = get_chat_room_node(new_update->chat_room);
     int line_node_already_existed = 1;
     int should_send_to_client = 1;
@@ -174,27 +178,10 @@ void handle_append_update(update *new_update) {
     }
     if (compare_lts(new_update->lts, line_list_itr->next->lts) == 0
                 && line_list_itr->next->append_update_node == NULL) {
-        update_node *new_update_node = NULL;
         line_node *tmp = line_list_itr->next;
         if (tmp->next == NULL) {
             room_node->lines_list_tail = tmp;
-            /* This line is the newest, try to add to end of update queue*/
-            new_update_node = add_update_to_queue(new_update, update_list_tail, update_list_tail);
         }
-        if (new_update_node == NULL) {
-            /* find first line older than new line where there is an allocated update_node*/
-            line_node *start_line = line_list_itr;
-            while (start_line->append_update_node == NULL && start_line->prev != NULL) {
-               start_line = start_line->prev; 
-            }
-            new_update_node = add_update_to_queue(new_update, start_line->append_update_node, update_list_tail); 
-        }
-        if (new_update_node == NULL) {
-            perror("there was a problem inserting a new update to queue of updates. there shouldn't be a problem \
-because this append update was succesfully inserted into data structure\n");
-            Bye();
-        }
-        /* New update succesfully inserted into list of updates. Now need to insert into data structure */
         tmp->append_update_node = new_update_node;
         /* TODO: Write new_update_node to disk*/
 
@@ -247,7 +234,7 @@ void handle_like_update(update *update) {
      * This will require changing the intial line_list_itr, and how a new line_node would be inserted,
      * because the tail pointer does not point to a sentinal */
     while (line_list_itr->next != NULL 
-              && compare_lts(line_list_itr->next->lts, target_lts) < 0) {
+              && compare_lts(line_list_itr->next->pread ssssts, target_lts) < 0) {
         line_list_itr = line_list_itr->next;
     }
     if (line_list_itr->next == NULL 
@@ -400,6 +387,34 @@ room_node * append_chat_room_node(char *chat_room) {
 
     return new_room;
 }
+
+
+/* Add give update to appropriate list of updates. Only adds if given update is
+ *  most recent update. given update cannot be NULL */
+update_node * store_update(update *new_update) {
+    int update_server_id = (new_update->lts).server_id;
+    
+    if (server_updates_array[update_server_id] == NULL 
+            || (server_updates_array[update_server_id]->update->lts).server_seq + 1 == (new_update->lts).server_seq) {
+        update_node *new_node = NULL;
+        if ((new_node = malloc(sizeof(update_node))) == NULL
+            || (new_node->update = malloc(sizeof(update))) == NULL) {
+            perror("malloc error\n");
+            Bye();
+        }
+        if  (server_updates_array[update_server_id] != NULL) {
+            server_updates_array[update_server_id]->prev = new_node; 
+        }
+        memcpy(new_node->update, new_update, sizeof(update));
+        new_node->prev = NULL;
+        new_node->next = server_updates_array[update_server_id];
+        server_updates_array[update_server_id] = new_node;
+        /* TODO: consider writing to DISK HERE, so that when restart, know have the right seq. */
+        return server_updates_array[update_server_id];
+    }tt
+    return NULL;
+}
+
 
 /* This method will attempt to add the given update to the update list if possible.
  * If the update_node already exists, but does not have a given update, it will
