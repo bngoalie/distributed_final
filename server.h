@@ -33,8 +33,6 @@ typedef struct room_node {
  * 2: end merge 
  * 3: update request*/
 typedef struct {
-    int type;
-    int server_id; // TODO: remove, this is temporary as I figure out logic for mergine. 
     char payload[sizeof(update)];
 } server_message;
 
@@ -65,5 +63,6 @@ update_node * store_update(update *update);
 void handle_server_update_bundle(server_message *recv_serv_msg, 
                                     int message_size, char *sender); 
 void handle_leave_of_server(int left_server_index);
+void initiate_merge();
 
 #endif

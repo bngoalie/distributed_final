@@ -30,6 +30,7 @@ int	        Num_sent;
 struct      timeval start_time;
 struct      timeval end_time, end_time_last_send, end_time_last_receive;
 int         num_processes;
+/* These indices will start from 0 */
 int         process_index;
 int         seq;
 FILE        *fd = NULL;
@@ -40,11 +41,18 @@ room_node *room_list_tail;
 update_node update_list_head;
 update_node *update_list_tail;
 update_node *server_updates_array[MAX_MEMBERS];
+server_message serv_msg_buff;
 char        server_names[MAX_MEMBERS][MAX_GROUP_NAME];
 int         server_status[MAX_MEMBERS];
 int         prev_server_status[MAX_MEMBERS];
 int         local_server_seq;
 int         local_counter;
+int         merge_state; 
+int         expected_completion_mask;
+int         completion_mask;
+int         num_servers_responsible_for_in_merge;
+int         server_responsibility_assign[MAX_MEMBERS];
+int         expected_max_seqs[MAX_MEMBERS];
 
 static	void	    Usage( int argc, char *argv[] );
 static  void        Print_help();
@@ -65,9 +73,17 @@ int main(int argc, char *argv[]) {
     /* Set up list of updates */
     update_list_head.next = NULL;
     update_list_tail = &update_list_head;   
+
+    merge_state = 0;
+    
+    expected_completion_mask = 0;
+    completion_mask = 0;
+    num_servers_responsible_for_in_merge = 0;
     
     for (int i = 0; i < MAX_MEMBERS; i++) {
         server_updates_array[i] = NULL;
+        server_responsibility_assign[i] = num_processes; 
+        expected_max_seqs[i] = 0;
     } 
 
     /* TODO: Read last known state from disk*/
@@ -418,7 +434,61 @@ void handle_server_update_bundle(server_message *recv_serv_msg,
 }
 
 void handle_leave_of_server(int left_server_index) {
+    /* TODO: write this */
+}
 
+void handle_start_merge(int *seq_array, int sender_server_id) {
+    /*server_responsibility_assign*/
+    for (int idx = 0; idx < num_processes; idx++) {
+        if (should_choose_new_server(expected_max_seqs[idx], seq_array[idx],
+                                     server_responsibility_assign[idx], 
+                                     sender_server_id)) {
+            server_responsibility_assign[idx] = sender_server_id;
+            expected_max_seqs[idx] = seq_array[idx];
+        }
+    }
+    
+    completion_mask |= (1 << sender_server_id);
+
+}
+
+int should_choose_new_server(int current_max_seq, int new_max_seq, 
+                             int current_server_id, int new_server_id) {
+    if (new_max_seq > current_max_seq 
+        || (new_max_seq == current_max_seq && new_server_id < current_server_id)) {
+        return 1;
+    }
+    return 0;
+}
+
+void initiate_merge() {
+    expected_completion_mask = 0;
+    completion_mask = 1;
+    completion_mask <<= process_index;
+    num_servers_responsible_for_in_merge = 0;
+    merge_state = 1;
+    int *max_seq_array = (int *)(serv_msg_buff.payload); 
+    for (int idx = 0; idx < num_processes; idx++) {
+        /* TODO: REMEMBER: first index is rightmost bit (idx)*/
+        expected_completion_mask |= (server_status[idx] << idx);
+        /* Set max known seq for this server */
+        max_seq_array[idx] = 0;
+        expected_max_seqs[idx] = 0;
+        if (server_updates_array[idx] != NULL) {
+            max_seq_array[idx] = (server_updates_array[idx]->update->lts).server_seq;
+            expected_max_seqs[idx] = max_seq_array[idx];
+        }
+        server_responsibility_assign[idx] = process_index; 
+
+    }
+
+    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), server_group, 1, 
+                           num_processes*sizeof(int), (char *) &serv_msg_buff);
+    /* TODO: consider clearing up serv_msg_buff after sending*/
+    if(ret < 0) {
+        SP_error(ret);
+        Bye();
+    }
 }
 
 static void	Read_message() {
@@ -450,9 +520,12 @@ static void	Read_message() {
             if (strcmp(target_groups[idx], server_group) == 0) {
                 /* The message is from the spread group for servers. */
                 server_message *recv_serv_msg = (server_message *)mess;
-                switch(recv_serv_msg->type) {
+                switch(mess_type) {
                     case 0: // regular update
                         handle_server_update_bundle(recv_serv_msg,ret, sender);
+                        break;
+                    case 1:
+                        handle_start_merge((int *)(recv_serv_msg->payload), get_group_num_from_name(sender));
                         break;
                 } 
             } else if (strcmp(target_groups[idx], personal_group) == 0) {
