@@ -42,6 +42,7 @@ update_node update_list_head;
 update_node *update_list_tail;
 update_node *server_updates_array[MAX_MEMBERS];
 server_message serv_msg_buff;
+update sending_update_buff;
 char        server_names[MAX_MEMBERS][MAX_GROUP_NAME];
 int         server_status[MAX_MEMBERS];
 int         prev_server_status[MAX_MEMBERS];
@@ -326,7 +327,7 @@ void handle_join_update(update *join_update, char *client_spread_group) {
     if (client_spread_group != NULL) {
         strcpy(client_list_head->next->client_group, client_spread_group); 
     }
-    /* TODO: send update to chat room group */
+    /* send update to chat room group */
     update *update_payload = (update *)(server_client_mess_buff.payload);
     memcpy(update_payload, join_update, sizeof(update));
     char chat_room_group[MAX_GROUP_NAME];
@@ -416,7 +417,13 @@ update_node * store_update(update *new_update) {
         new_node->prev = NULL;
         new_node->next = server_updates_array[update_server_id];
         server_updates_array[update_server_id] = new_node;
+        
+        if (local_counter < (new_update->lts).counter) {
+            local_counter = (new_update->lts).counter;
+        }       
+
         /* TODO: consider writing to DISK HERE, so that when restart, know have the right seq. */
+        
         return server_updates_array[update_server_id];
     }
     return NULL;
@@ -449,6 +456,10 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
     }
     
     completion_mask |= (1 << sender_server_id);
+
+    if (expected_completion_mask == completion_mask) {
+        /* TODO: send merging messages */ 
+    }
 
 }
 
@@ -491,9 +502,78 @@ void initiate_merge() {
     }
 }
 
+void handle_client_message(update *client_update, int mess_size, char *sender) {
+    int update_type = client_update->type;
+    switch (update_type) {
+        case 0:
+            /* processes append update */
+            handle_client_append(client_update);
+            break;
+        case 1:
+            /* processes like update*/
+            break;
+        case 2:
+            /* TODO: processes join update*/
+            break;
+        case 3:
+            /* TODO: processes username update*/
+            break;
+        case 4:
+            /* TODO: processes view update*/
+            break;
+        case 5:
+            /* TODO: processes history update*/
+            break;
+        default:
+           break; 
+    }
+}
+
+void handle_client_append(update *client_update) {
+    /* TODO: MAKE SURE client is setting fields correctly? */
+    update *new_update = (update *)&serv_msg_buff;
+    memcpy(new_update, client_update, sizeof(update));
+    (new_update->lts).counter = ++local_counter;
+    (new_update->lts).server_seq = ++local_server_seq;
+    (new_update->lts).server_id = process_index;
+
+    /* Apply the update */
+    handle_update(new_update, Private_group);
+
+    /* send set server_message to server group */
+    send_server_message(&serv_msg_buff, sizeof(update));
+
+}
+
+void handle_client_like(update *client_update) {
+    /* TODO: MAKE SURE client is setting fields correctly? */
+    /* TODO: consider double checking the client's logic making sure can 
+     * allowed to like/unlike given line */
+    update *new_update = (update *)&serv_msg_buff;
+    memcpy(new_update, client_update, sizeof(update));
+    (new_update->lts).counter = ++local_counter;
+    (new_update->lts).server_seq = ++local_server_seq;
+    (new_update->lts).server_id = process_index;
+
+    /* Apply the update */
+    handle_update(new_update, Private_group);
+
+    /* send set server_message to server group */
+    send_server_message(&serv_msg_buff, sizeof(update));
+}
+
+void send_server_message(server_message *msg_to_send, int size_of_message) {
+    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), server_group, 0,
+                           size_of_message, (char *) msg_to_send);
+    if(ret < 0) {
+        SP_error(ret);
+        Bye();
+    }
+}
+
 static void	Read_message() {
     /* Local vars */
-    static char	        mess[1200];
+    static char	        mess[MAX_MESS_LEN];
     char		    sender[MAX_GROUP_NAME];
     char		    target_groups[MAX_GROUPS][MAX_GROUP_NAME];
     membership_info memb_info;
@@ -529,7 +609,8 @@ static void	Read_message() {
                         break;
                 } 
             } else if (strcmp(target_groups[idx], personal_group) == 0) {
-                /*The message was sent to the server's personal group (from a client)*/
+                /* The message was sent to the server's personal group (from a client)*/
+                handle_client_message((update *)mess, ret, sender);
             } else {
                 /* The server should not be receiving regular messages from any other groups
                  * (i.e. chat room groups) */

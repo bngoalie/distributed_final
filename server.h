@@ -33,7 +33,7 @@ typedef struct room_node {
  * 2: end merge 
  * 3: update request*/
 typedef struct {
-    char payload[sizeof(update)];
+    char payload[MAX_MESS_LEN];
 } server_message;
 
 typedef struct {
@@ -64,5 +64,11 @@ void handle_server_update_bundle(server_message *recv_serv_msg,
                                     int message_size, char *sender); 
 void handle_leave_of_server(int left_server_index);
 void initiate_merge();
+void handle_client_message(update *client_update, int mess_size, char *sender);
+void handle_client_append(update *client_update); 
+void send_server_message(server_message *msg_to_send, int size_of_message); 
+int should_choose_new_server(int current_max_seq, int new_max_seq, 
+                             int current_server_id, int new_server_id);
+void handle_client_like(update *client_update);
 
 #endif
