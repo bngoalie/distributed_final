@@ -24,7 +24,8 @@ char        username[MAX_USERNAME_LENGTH]; // TODO: Define macros for lengths?
 char        private_group[MAX_GROUP_NAME]; // TODO: is MAX_GROUP_NAME the right macro?
 char        room_group[MAX_GROUP_NAME]; // TODO: remove, use room_name w/ funciton
 char        room_name[MAX_ROOM_NAME_LENGTH];
-bool        connected = 0;
+bool        connected;
+bool        username_set;
 bool        server_present;
 int         server_id;
 mailbox     mbox;
@@ -39,7 +40,11 @@ char        *mess;
 /* Main */
 int main(){
     // Initialize globals
-    strcpy(&username[0], "");
+    connected = false;
+    username_set = false;
+    room_group[0] = 0;
+    room_name[0] = 0;
+    username[0] = 0;
     num_lines = 0;
     server_id = -1;
     if((mess = malloc(sizeof(server_client_mess))) == NULL){
@@ -143,11 +148,15 @@ void parse_update(){
                 new_update++;
             }
         }else{
-            // TODO: Don't need acks anymore?
+            // TODO: Don't need acks anymore, do we use any other mess types?
         }
+        // Refresh Display
+        update_display();
+
     }else if(Is_membership_mess(service_type)){
         // TODO: Handle membership changes
         //  More specifically: detect loss of server 
+        
     }else
         printf("Error: received message with unknown service type\n");
 }
@@ -157,6 +166,8 @@ void process_append(update *append_update){
     // Local vars
     line_node   *line_list_itr = &lines_list_head;
     line_node   *tmp;
+    liker_node  *like_list_itr;
+    liker_node  *tmp2;
     int         itr_lines = 0; 
     update      *new_update;
     
@@ -197,9 +208,17 @@ void process_append(update *append_update){
             tmp = lines_list_tail;
             lines_list_tail = lines_list_tail->prev;
             lines_list_tail->next = NULL;
-            // Free update node from 26th line
+            // Free update node and likers from 26th line
             free(tmp->append_update);
-            // TODO: Free likers list, too! (Anything else missing?)
+            like_list_itr = tmp->likers_list_head.next;
+            while(like_list_itr != NULL){
+                free(like_list_itr->like_update);
+                tmp2 = like_list_itr;
+                like_list_itr = like_list_itr->next;
+                free(tmp2);
+            }
+            // Free line node itself
+            free(tmp);
         }        
     }
 }
@@ -220,7 +239,7 @@ void process_like(update *like_update){
     line_itr = lines_list_tail->prev; // iterator starts at oldest message
     line_found = false;
     while(line_itr != NULL && !line_found){ // TODO: add logic: if LTS is older, line doesn't exist
-        if(!compare_lts(line_itr->lts, payload->lts))
+        if(!compare_lts(line_itr->lts, payload->lts)) // (can reduce computation time if absent)
             line_found = true;
         else
             line_itr = line_itr->prev;
@@ -322,7 +341,7 @@ void connect_to_server(int new_id){
         E_init();       
         // Connect to Spread daemon
         printf("Connecting to server %d...\n", new_id+1);
-        ret = SP_connect_timeout(daemons[new_id], "s1", 0, 1, // TODO: change "s1" to NULL
+        ret = SP_connect_timeout(daemons[new_id], "s-0", 0, 1, // TODO: change "s-0" to NULL
             &mbox, private_group, timeout);
         if(ret != ACCEPT_SESSION){
             // If unable to connect to daemon, indicate failure
@@ -368,6 +387,9 @@ void connect_to_server(int new_id){
                         send_username_update();
                     // Attach file descriptor for incoming message handling
                     E_attach_fd(mbox, READ_FD, parse_update, 0, NULL, HIGH_PRIORITY);
+                    // Clear previous lines and users
+                    clear_lines();
+                    clear_users();
                 }else{
                     printf("Failed to detect server %d in lobby group\n", server_id+1);
                     server_id = temp_id;
@@ -442,46 +464,51 @@ void check_for_server(){
     E_init();       
 }
 
-/* Join chat room with given room_name */
-void join_chat_room(char *room_name, bool is_group_name){
+/* Join chat room with given room_name */                   // TODO: SET ROOM_NAME IN ADDITION TO ROOM_GROUP
+void join_chat_room(char *room_name, bool is_group_name){ 
     int     ret;    
     char    lobby[MAX_ROOM_NAME_LENGTH] = "";
     char    prev_group[MAX_ROOM_NAME_LENGTH];
 
     // Ensure client is connected to a server
     if(connected){
-        // TODO: Message server to indicate room change
-        
- 
-        // Store current room group
-        strcpy(&prev_group[0], &room_group[0]);
+        if(username_set){
+            // TODO: Message server to indicate room change
+            
      
-        // Join new room group
-        if(is_group_name){
-            strcpy(&room_group[0], room_name);
-            ret = SP_join(mbox, room_name);
-        }else{
-            get_room_group(server_id, room_name, &room_group[0]);
-            ret = SP_join(mbox, &room_group[0]);
-        }
-        if(ret != 0){
-            // Unsuccessful, revert to previous group
-            SP_error(ret);
-            strcpy(&room_group[0], &prev_group[0]);
-            printf("Error: unable to join group %s\n", &room_group[0]);
-        }else{
-            // Successful, leave previous group
-            get_lobby_group(server_id, lobby);
-            if(strcmp(&prev_group[0], lobby)){ // don't leave lobby
-                SP_leave(mbox, &prev_group[0]);
-                printf("(Left room group %s)\n", &prev_group[0]);
+            // Store current room group
+            strcpy(&prev_group[0], &room_group[0]);
+         
+            // Join new room group
+            if(is_group_name){
+                strcpy(&room_group[0], room_name);
+                ret = SP_join(mbox, room_name);
+            }else{
+                get_room_group(server_id, room_name, &room_group[0]);
+                ret = SP_join(mbox, &room_group[0]);
             }
-            printf("Joined room %s\n", room_name);
-        }
+            if(ret != 0){
+                // Unsuccessful, revert to previous group
+                SP_error(ret);
+                strcpy(&room_group[0], &prev_group[0]);
+                printf("Error: unable to join group %s\n", &room_group[0]);
+            }else{
+                // Successful, leave previous group
+                get_lobby_group(server_id, lobby);
+                if(strcmp(&prev_group[0], lobby)){ // don't leave lobby
+                    SP_leave(mbox, &prev_group[0]);
+                    printf("(Left room group %s)\n", &prev_group[0]);
+                }
+                // Clear previous lines and users
+                clear_lines();
+                clear_users();
+                printf("Joined room %s\n", room_name);
+            }
+        }else
+            printf("Error: must set a username before joining a room\n");
     }else{
         printf("Error: must be connected to a server to join a room\n");
     }
-    // TODO: clear previous lines!
 }
 
 /* Change username */
@@ -502,7 +529,7 @@ void change_username(char *new_username){
 /* Append new line to current chat room */
 void append_line(char *new_line){
     // Local vars
-    client_update *append;
+    update *append;
     char lobby[MAX_ROOM_NAME_LENGTH];
     int ret;
     // Confirm client is connected and in chat room (not a lobby)
@@ -511,13 +538,14 @@ void append_line(char *new_line){
         printf("Error: Client must be connected and in a chat room to post!\n");
     }else{
         // Cast buffer to update, set fields
-        append = (client_update *)mess;
+        append = (update *)mess;
         append->type = 0;
-        strcpy(&(append->username[0]), &username[0]);
+        strcpy(append->username, username);
+        strcpy(append->chat_room, room_name);
         strcpy((char *)&(append->payload), new_line);
 
         // Send update to current server
-        ret = SP_multicast(mbox, FIFO_MESS, &room_group[0], 0, sizeof(client_update), mess);
+        ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, &room_group[0], 0, sizeof(update), mess);
         if(ret < 0){
             SP_error(ret);
             close_client();
@@ -529,7 +557,7 @@ void append_line(char *new_line){
 /* Set like status for line number */
 void like_line(int line_num, bool like){ 
     // Local vars
-    client_update *like_update;
+    update *like_update;
     like_payload *payload;
     line_node *line_itr;
     liker_node *like_itr;
@@ -570,15 +598,16 @@ void like_line(int line_num, bool like){
                     like ? "liked" : "unliked", line_num);
             else{
                 // Cast buffer to update, set type & fields (LTS and toggle)
-                like_update = (client_update *)mess;
+                like_update = (update *)mess;
                 like_update->type = 1;
-                strcpy(&(like_update->username[0]), &username[0]);
+                strcpy(like_update->username, username);
+                strcpy(like_update->chat_room, room_name);
                 payload = (like_payload *)&(like_update->payload);
                 payload->toggle = like;
                 payload->lts = line_itr->lts;
 
                 // Send update to current server
-                ret = SP_multicast(mbox, FIFO_MESS, &room_group[0], 0, sizeof(client_update), mess);
+                ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, &room_group[0], 0, sizeof(update), mess);
                 if(ret < 0){
                     SP_error(ret);
                     close_client();
@@ -615,23 +644,25 @@ void display_view(){
 /* Send local username to server */
 void send_username_update(){
     // Local vars
-    client_update *username_update;
+    update *username_update;
     int ret;    
 
     if(!connected)
         printf("Error: attempting to send username update when disconnected\n");
     else{
         // Cast buffer to update, set type & username (note: no payload)
-        username_update = (client_update *)mess;
+        username_update = (update *)mess;
         username_update->type = 3;
-        strcpy(&(username_update->username[0]), &username[0]);
+        strcpy(username_update->username, username);
+        strcpy(username_update->chat_room, room_name);
 
         // Send to server
-        ret = SP_multicast(mbox, FIFO_MESS, &room_group[0], 0, sizeof(client_update), mess);
+        ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, &room_group[0], 0, sizeof(update), mess);
         if(ret < 0){
             SP_error(ret);
             close_client();
         }
+        username_set = true;
         printf("Sending username update\n");
     }
 }
@@ -644,8 +675,8 @@ void update_display(){
     liker_node *like_itr;
     int likes, line_num;
 
-    // Clear screen
-    printf("\033[2J\033[1;1H"); // TODO: check that this works (remove during debug?)
+    // Clear screen:
+    system("clear");
 
     // Print room and users:
     printf("Room: %s\n", room_name);
@@ -684,22 +715,52 @@ void update_display(){
     // TODO: Possibly display recent status strings at bottom... 
 }
 
-/* Clear room data structure */
-void clear_room(){
+/* Clear lines data structure */
+void clear_lines(){
     // Local vars
     line_node *line_itr;
+    line_node *tmp;
+    liker_node *like_itr;
+    liker_node *tmp2;
 
-    // Iterate through lines
+    // Iterate through lines, free
     line_itr = lines_list_head.next;
     while(line_itr != NULL){
-        
-    }    
+        free(line_itr->append_update);
+
+        // Iterate through likers, free
+        like_itr = line_itr->likers_list_head.next;
+        while(like_itr != NULL){
+            tmp2 = like_itr;
+            like_itr = like_itr->next;
+            free(tmp2);
+        }
+        tmp = line_itr;
+        line_itr = line_itr->next;
+        free(tmp);
+    }
+    
+    // Clear globals
+    lines_list_head.next = NULL;
+    lines_list_tail = NULL;
+    num_lines = 0; 
 }
 
-/* Free line node (and members) */
-void free_line(line_node *line){
-    free(line->append_update);
-    free(line); // Okay, maybe this didn't really warrant a function....
+/* Clear users data structure  */
+void clear_users(){
+    // local vars
+    client_node *user_itr;
+    client_node *tmp;
+
+    // Iterate through users, free
+    user_itr = client_list_head.next;
+    while(user_itr != NULL){
+        free(user_itr->join_update);
+        tmp = user_itr;
+        user_itr = user_itr->next;
+        free(tmp);
+    }
+    client_list_head.next = NULL;
 }
 
 /* Close the client */

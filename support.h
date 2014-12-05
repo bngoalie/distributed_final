@@ -63,10 +63,14 @@ typedef struct {
     char room[MAX_ROOM_NAME_LENGTH];
 } room_payload;
 
-/* (Ordered/Server) Update
+/* Update
  * 0: append
  * 1: like
- * 2: join */
+ * 2: join 
+ * 3: username
+ * 4: view
+ * 5: history
+ * */
 typedef struct {
     int type;
     lamport_timestamp lts;
@@ -75,21 +79,6 @@ typedef struct {
     update_payload payload;
 } update;
 #define UPDATE_SIZE_WITHOUT_PAYLOAD = sizeof(update)-sizeof(update_payload)
-
-/* (Unordered/Client) Update 
- * 0: append
- * 1: like
- * 2: join
- * 3: username
- * 4: room
- * 5: history request
- * */
-typedef struct{
-    int type;
-    char username[MAX_USERNAME_LENGTH];
-    update_payload payload;
-} client_update;
-
 
 /* Server-to-client message
  * 0: update

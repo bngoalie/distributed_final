@@ -82,8 +82,11 @@ void send_username_update();
 /* Update room display */
 void update_display();
 
-/* Clear room data structure */
-void clear_room();
+/* Clear lines data structure */
+void clear_lines();
+
+/* Clear users data structure */
+void clear_users();
 
 /* Close the client */
 void close_client();
