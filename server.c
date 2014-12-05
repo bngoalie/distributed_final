@@ -41,13 +41,21 @@ update_node update_list_head;
 update_node *update_list_tail;
 update_node *server_updates_array[MAX_MEMBERS];
 char        server_names[MAX_MEMBERS][MAX_GROUP_NAME];
-
+int         server_status[MAX_MEMBERS];
+int         prev_server_status[MAX_MEMBERS];
+int         local_server_seq;
+int         local_counter;
 
 static	void	    Usage( int argc, char *argv[] );
 static  void        Print_help();
 static  void        Bye();
 
 int main(int argc, char *argv[]) {
+
+    for (int idx = 0; idx < MAX_MEMBERS; idx++) {
+        server_status[idx] = 0;
+        prev_server_status[idx] = 0;
+    }
 
     /* Set up list of rooms (set up the lobby) */
     room_list_head.next = NULL;
@@ -205,7 +213,7 @@ void handle_append_update(update *new_update) {
             }
             char chat_room_group[MAX_GROUP_NAME];
             get_room_group(process_index, room_node->chat_room, chat_room_group);
-            int ret = SP_multicast(Mbox, FIFO_MESS, chat_room_group, 0, num_updates_to_send*sizeof(update), (char *) &server_client_mess_buff);
+            int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), chat_room_group, 0, num_updates_to_send*sizeof(update), (char *) &server_client_mess_buff);
             if(ret < 0) {
                 SP_error(ret);
                 Bye();
@@ -268,7 +276,7 @@ void handle_like_update(update *new_update) {
         memcpy(update_payload, new_update, sizeof(update));
         char chat_room_group[MAX_GROUP_NAME];
         get_room_group(process_index, room_node->chat_room, chat_room_group);
-        int ret = SP_multicast(Mbox, FIFO_MESS, chat_room_group, 0, sizeof(update), (char *) &server_client_mess_buff);
+        int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), chat_room_group, 0, sizeof(update), (char *) &server_client_mess_buff);
         if(ret < 0) {
             SP_error(ret);
             Bye();
@@ -307,7 +315,7 @@ void handle_join_update(update *join_update, char *client_spread_group) {
     memcpy(update_payload, join_update, sizeof(update));
     char chat_room_group[MAX_GROUP_NAME];
     get_room_group(process_index, room_node->chat_room, chat_room_group);
-    int ret = SP_multicast(Mbox, FIFO_MESS, chat_room_group, 0, sizeof(update), (char *) &server_client_mess_buff);
+    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), chat_room_group, 0, sizeof(update), (char *) &server_client_mess_buff);
     if(ret < 0) {
         SP_error(ret);
         Bye();
@@ -409,12 +417,16 @@ void handle_server_update_bundle(server_message *recv_serv_msg,
     return;
 }
 
+void handle_leave_of_server(int left_server_index) {
+
+}
+
 static void	Read_message() {
     /* Local vars */
     static char	        mess[1200];
     char		    sender[MAX_GROUP_NAME];
     char		    target_groups[MAX_GROUPS][MAX_GROUP_NAME];
-   // membership_info memb_info;
+    membership_info memb_info;
     int		        num_groups;
     int		        service_type;
     int16		    mess_type;
@@ -440,7 +452,7 @@ static void	Read_message() {
                 server_message *recv_serv_msg = (server_message *)mess;
                 switch(recv_serv_msg->type) {
                     case 0: // regular update
-                        handle_server_update_bundle(&(recv_serv_msg),ret, sender);
+                        handle_server_update_bundle(recv_serv_msg,ret, sender);
                         break;
                 } 
             } else if (strcmp(target_groups[idx], personal_group) == 0) {
@@ -450,6 +462,55 @@ static void	Read_message() {
                  * (i.e. chat room groups) */
             }
         }	
+    } else if(Is_membership_mess(service_type)) {
+        ret = SP_get_memb_info(mess, service_type, &memb_info);
+        if (ret < 0) {
+                printf("BUG: membership message does not have valid body\n");
+                SP_error(ret);
+                Bye();
+        }
+		if (Is_reg_memb_mess(service_type)) {
+            if (DEBUG) {
+    			printf("Received REGULAR membership for group %s with %d members, where I am member %d:\n",
+	    			sender, num_groups, mess_type);
+                for (int i=0; i < num_groups; i++)
+                    printf("\t%s\n", &target_groups[i][0]);
+                printf("grp id is %d %d %d\n",memb_info.gid.id[0], memb_info.gid.id[1], memb_info.gid.id[2]);
+            }
+            if(!strcmp(sender, server_group)) {
+                int server_index;
+                int merge_case = 0;
+                for (int idx = 0; idx < num_processes; idx++) {
+                    prev_server_status[idx] = server_status[idx]; 
+                    server_status[idx] = 0;
+                }
+                for (int idx = 0; idx < num_groups; idx++) {
+                    server_index = atoi(&(target_groups[idx][SERVER_INDEX_INDEX]));
+                    server_status[server_index] = 1;
+                    if (!prev_server_status[server_index]) {
+                        merge_case = 1;   
+                    }
+                }
+                if (merge_case) {
+                    /* TODO Merge!*/
+                } else {
+                    /* TODO: Someone left. Figure out who by either comparing
+                     * prev_server_status and server_status or get memb_info*/
+                    for (int idx = 0; idx < num_groups; idx++) {
+                        /* If a server status change from 1 to 0 (1-0=1)*/
+                        if (prev_server_status[idx] - server_status[idx] == 1) {
+                           handle_leave_of_server(idx); 
+                        }
+                    }
+                }
+            }
+        }
+    } else if(Is_transition_mess(service_type)) {
+        printf("received TRANSITIONAL membership for group %s\n", sender);
+    } else if( Is_caused_leave_mess( service_type)){
+        printf("received membership message that left group %s\n", sender);
+    } else {
+        printf("received incorrecty membership message of type 0x%x\n", service_type);
     }
 }
 static void Usage(int argc, char *argv[])
@@ -461,11 +522,10 @@ static void Usage(int argc, char *argv[])
 	sprintf( Spread_name, PORT);
     sprintf( server_group, SPREAD_SERVER_GROUP);
 
-
     if (argc != 3) {
         Print_help();
     } else {
-        process_index   = atoi(argv[1]);    // Process index
+        process_index   = atoi(argv[1]) - 1;    // Process index
         num_processes   = atoi(argv[2]);    // Number of processes
 
         /* Set name of group where this server is only member */

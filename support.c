@@ -8,6 +8,8 @@
  */
 
 #include "support.h"
+#include <string.h>
+#include <stdlib.h>
 
 /* Compares the two given lamport timestamps 
  *  Returns 1 if lts1 comes after lts2
@@ -55,5 +57,6 @@ void get_lobby_group(int server_id, char *group){
 
 
 int get_group_num_from_name(char *group_name) {
-    
+    int len = strlen(group_name);
+    return atoi(&group_name[len-1]);
 }

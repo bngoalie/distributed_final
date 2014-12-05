@@ -64,5 +64,6 @@ void handle_update(update *new_update, char *private_spread_group);
 update_node * store_update(update *update);
 void handle_server_update_bundle(server_message *recv_serv_msg, 
                                     int message_size, char *sender); 
+void handle_leave_of_server(int left_server_index);
 
 #endif

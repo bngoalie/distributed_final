@@ -23,6 +23,7 @@
 #define MAX_ROOM_NAME_LENGTH    20
 #define MAX_LINE_LENGTH         80
 #define MAX_MESS_LEN            100000
+#define SERVER_INDEX_INDEX      3
 
 /* TYPE DEFINITIONS */
 
