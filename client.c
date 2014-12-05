@@ -165,9 +165,10 @@ void parse_update(){
         }else if(Is_reg_memb_mess(service_type)){
             if(Is_caused_disconnect_mess(service_type)){
                 // Check for server disconnect
-                
+                printf("Disconnect of member %s\n", memb_info.changed_member); 
             }else if(Is_caused_network_mess(service_type)){
-                // Check for client/server partition
+                // TODO: Check for client/server partition
+                
             }
         }
         
@@ -367,7 +368,7 @@ void connect_to_server(int new_id){
         E_init();       
         // Connect to Spread daemon
         printf("Connecting to server %d...\n", new_id+1);
-        ret = SP_connect_timeout(daemons[new_id], "s-0", 0, 1, // TODO: change "s-0" to NULL
+        ret = SP_connect_timeout(daemons[new_id], NULL, 0, 1,
             &mbox, private_group, timeout);
         if(ret != ACCEPT_SESSION){
             // If unable to connect to daemon, indicate failure
