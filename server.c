@@ -35,19 +35,13 @@ int         seq;
 FILE        *fd = NULL;
 server_client_mess server_client_mess_buff;
 
-
-
 room_node room_list_head; // Should I make this the lobby?
 room_node *room_list_tail;
 update_node update_list_head;
 update_node *update_list_tail;
 update_node *server_updates_array[MAX_MEMBERS];
+char        server_names[MAX_MEMBERS][MAX_GROUP_NAME];
 
-/* TODO: Intent is to keep traack of updates received from each server
- * could be simply replaced with an int array for seqs, but need to update only when receive an 
- * update that is one higher than current. if receive an even higher seq, need to remember that received this seq.
- * This could evolve into some kind of sliding window mechnism liken that used in ex1 and ex2*/
-int most_recent_server_updates[MAX_MEMBERS]; // used for checking most recent seq from each server? TODO: replace 5 with macro. 
 
 static	void	    Usage( int argc, char *argv[] );
 static  void        Print_help();
@@ -211,7 +205,11 @@ void handle_append_update(update *new_update) {
             }
             char chat_room_group[MAX_GROUP_NAME];
             get_room_group(process_index, room_node->chat_room, chat_room_group);
-            int ret = SP_multicast(Mbox, FIFO_MESS, chat_room_group, 0, sizeof(int)+num_updates_to_send*sizeof(update), (char *) &server_client_mess_buff);
+            int ret = SP_multicast(Mbox, FIFO_MESS, chat_room_group, 0, num_updates_to_send*sizeof(update), (char *) &server_client_mess_buff);
+            if(ret < 0) {
+                SP_error(ret);
+                Bye();
+            }
         }
     }
 }
@@ -266,6 +264,15 @@ void handle_like_update(update *new_update) {
 
     if (should_send_to_client == 1) {
         /* TODO: send update to chat room group */
+        update *update_payload = (update *)(server_client_mess_buff.payload);
+        memcpy(update_payload, new_update, sizeof(update));
+        char chat_room_group[MAX_GROUP_NAME];
+        get_room_group(process_index, room_node->chat_room, chat_room_group);
+        int ret = SP_multicast(Mbox, FIFO_MESS, chat_room_group, 0, sizeof(update), (char *) &server_client_mess_buff);
+        if(ret < 0) {
+            SP_error(ret);
+            Bye();
+        }    
     }
 }
 
@@ -295,6 +302,16 @@ void handle_join_update(update *join_update, char *client_spread_group) {
     if (client_spread_group != NULL) {
         strcpy(client_list_head->next->client_group, client_spread_group); 
     }
+    /* TODO: send update to chat room group */
+    update *update_payload = (update *)(server_client_mess_buff.payload);
+    memcpy(update_payload, join_update, sizeof(update));
+    char chat_room_group[MAX_GROUP_NAME];
+    get_room_group(process_index, room_node->chat_room, chat_room_group);
+    int ret = SP_multicast(Mbox, FIFO_MESS, chat_room_group, 0, sizeof(update), (char *) &server_client_mess_buff);
+    if(ret < 0) {
+        SP_error(ret);
+        Bye();
+    }    
 }
 
 /* Currently returns the liker_node associated with the given line_node. */
@@ -381,8 +398,16 @@ update_node * store_update(update *new_update) {
     return NULL;
 }
 
-
-
+void handle_server_update_bundle(server_message *recv_serv_msg, 
+                                    int message_size, char *sender) {
+    update *update_itr = (update *)&(recv_serv_msg->payload);
+    int num_updates = message_size/sizeof(update);
+    for (int idx = 0; idx < num_updates; idx++) {
+        handle_update(update_itr, sender);
+        update_itr++;
+    }
+    return;
+}
 
 static void	Read_message() {
     /* Local vars */
@@ -415,7 +440,7 @@ static void	Read_message() {
                 server_message *recv_serv_msg = (server_message *)mess;
                 switch(recv_serv_msg->type) {
                     case 0: // regular update
-                        handle_update((update *)&(recv_serv_msg->payload), sender);
+                        handle_server_update_bundle(&(recv_serv_msg),ret, sender);
                         break;
                 } 
             } else if (strcmp(target_groups[idx], personal_group) == 0) {
@@ -432,7 +457,7 @@ static void Usage(int argc, char *argv[])
     /* TODO: consider just passing NULL as User when connecting to daeomn, 
      * or a naming scheming to designate servers by there id's. 
      * Probably not necessary, because servers should connect to different daemons. */
-	sprintf( User, "bglickm1-server" );
+
 	sprintf( Spread_name, PORT);
     sprintf( server_group, SPREAD_SERVER_GROUP);
 
@@ -446,6 +471,8 @@ static void Usage(int argc, char *argv[])
         /* Set name of group where this server is only member */
         get_single_server_group(process_index, personal_group);
         
+        /* Set username to same as personal spread group*/
+        sprintf( User, personal_group);
 
         /* Check number of processes */
         if(num_processes > MAX_MEMBERS) {

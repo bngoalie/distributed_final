@@ -31,8 +31,8 @@ void get_single_server_group(int server_id, char *group) {
         return;
     }
     char buffer[10] = "";
-    sprintf(buffer, "s%d", server_id);
-    strcpy(group, &buffer[0]);
+    sprintf(buffer, "s-%d", server_id);
+    strcpy(group, buffer);
 }
 
 /* Get spread group for specific chat room and server */
@@ -42,12 +42,18 @@ void get_room_group(int server_id, char *room_name, char *room_group) {
     }
     get_single_server_group(server_id, room_group);
     //strcat(room_group, "_");
-    strcat(room_group, &room_name[0]); 
+    strcat(room_group, room_name); 
 }
 
 /* Get Spread group for a server lobby */
 void get_lobby_group(int server_id, char *group){
     char buffer[10] = "";
     sprintf(buffer, "lobby%d", server_id);
-    strcpy(group, &buffer[0]);
+    strcpy(group, buffer);
+}
+
+
+
+int get_group_num_from_name(char *group_name) {
+    
 }

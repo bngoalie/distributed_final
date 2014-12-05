@@ -62,6 +62,7 @@ client_node * add_client_to_list_if_relevant(client_node *client_list_head,
 void handle_join_update(update *new_update, char *client_spread_group);
 void handle_update(update *new_update, char *private_spread_group);
 update_node * store_update(update *update);
-
+void handle_server_update_bundle(server_message *recv_serv_msg, 
+                                    int message_size, char *sender); 
 
 #endif
