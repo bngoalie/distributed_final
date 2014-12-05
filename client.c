@@ -8,21 +8,23 @@
  */
 
 /*
- * TODO: implement function(s) to clear all lines / updates /  relevant globals
- *  Call on a successful connect or room change
- *
- * TODO: Put most printf statements in ifdef DEFINE blocks
- *
- * TODO: TEST EVERYTHING
+ * Task List:
+ * - TODO: Handle membership messages
+ * - TODO: History request
+ * - TODO: View request
+ * - TODO: Verify mailbox revert functionality
+ * - TODO: Change name to NULL
+ * - TODO: Put most printf statements in ifdef DEFINE blocks
+ * - TODO: TEST EVERYTHING
  */
 
 #include "client.h"
 
 /* Globals */
 // Spread and connectivity globals
-char        username[MAX_USERNAME_LENGTH]; // TODO: Define macros for lengths?
-char        private_group[MAX_GROUP_NAME]; // TODO: is MAX_GROUP_NAME the right macro?
-char        room_group[MAX_GROUP_NAME]; // TODO: remove, use room_name w/ funciton
+char        username[MAX_USERNAME_LENGTH]; 
+char        private_group[MAX_GROUP_NAME]; 
+char        room_group[MAX_GROUP_NAME];
 char        room_name[MAX_ROOM_NAME_LENGTH];
 bool        connected;
 bool        username_set;
@@ -107,6 +109,7 @@ void parse_input(){
 
 /* Parse update from server */
 void parse_update(){
+    membership_info memb_info;
     update  *new_update;
     char    sender[MAX_GROUP_NAME];
     char    target_groups[MAX_GROUPS][MAX_GROUP_NAME];
@@ -147,15 +150,26 @@ void parse_update(){
                 }
                 new_update++;
             }
-        }else{
-            // TODO: Don't need acks anymore, do we use any other mess types?
         }
         // Refresh Display
         update_display();
 
     }else if(Is_membership_mess(service_type)){
         // TODO: Handle membership changes
-        //  More specifically: detect loss of server 
+        //  More specifically: detect loss of server, notify user
+        ret - SP_get_memb_info(mess, service_type, &memb_info);
+        if(ret < 0){
+            printf("Membership message does not have a valid body\n");
+            SP_error(ret);
+            close_client();
+        }else if(Is_reg_memb_mess(service_type)){
+            if(Is_caused_disconnect_mess(service_type)){
+                // Check for server disconnect
+                
+            }else if(Is_caused_network_mess(service_type)){
+                // Check for client/server partition
+            }
+        }
         
     }else
         printf("Error: received message with unknown service type\n");
@@ -238,8 +252,8 @@ void process_like(update *like_update){
     // Find relevant line (if exists) via LTS
     line_itr = lines_list_tail->prev; // iterator starts at oldest message
     line_found = false;
-    while(line_itr != NULL && !line_found){ // TODO: add logic: if LTS is older, line doesn't exist
-        if(!compare_lts(line_itr->lts, payload->lts)) // (can reduce computation time if absent)
+    while(line_itr != NULL && !line_found){ 
+        if(!compare_lts(line_itr->lts, payload->lts)) 
             line_found = true;
         else
             line_itr = line_itr->prev;
@@ -250,11 +264,17 @@ void process_like(update *like_update){
         // If like toggle is 1, add username to liker list
         if(payload->toggle == 1){
             // Create and link new liker node
-            tmp = malloc(sizeof(liker_node)); // TODO: add safety checks to mallocs
+            if((tmp = malloc(sizeof(liker_node))) == NULL){
+                printf("Error: failed to malloc like node\n");
+                close_client();
+            }
             tmp->next = line_itr->likers_list_head.next;
             line_itr->likers_list_head.next = tmp;
             // Malloc and set fields 
-            tmp->like_update = malloc(sizeof(update));
+            if((tmp->like_update = malloc(sizeof(update))) == NULL){
+                printf("Error: failed to malloc like update\n");
+                close_client();
+            }
             memcpy(&(tmp->like_update), like_update, sizeof(update));
         }else{
             // If like toggle is 0, find username and remove node from list
@@ -290,8 +310,14 @@ void process_join(update *join_update){
     // Process according to state change
     if(payload->toggle == 1){
         // If joining, create new node (and malloc update)
-        tmp = malloc(sizeof(client_node));
-        tmp->join_update = malloc(sizeof(update));
+        if((tmp = malloc(sizeof(client_node))) == NULL){
+            printf("Error: failed to malloc client node\n");
+            close_client();
+        }
+        if((tmp->join_update = malloc(sizeof(update))) == NULL){
+            printf("Error: failed to join update\n");
+            close_client();
+        }
         memcpy(tmp->join_update, join_update, sizeof(update));
         // Link node into existing list
         tmp->next = client_list_head.next;
@@ -377,7 +403,8 @@ void connect_to_server(int new_id){
                     // If previously connected, disconnect from previous daemon
                     if(connected){
                         SP_disconnect(mbox_temp);
-                        join_chat_room(&room_group[0], true);
+                        // Also rejoin previous room on new server
+                        join_chat_room(&room_group[0], true); // TODO: is this a problem if in lobby?
                     }
                     // Indicate success
                     connected = true;
@@ -406,8 +433,6 @@ void connect_to_server(int new_id){
         E_attach_fd(0, READ_FD, parse_input, 0, NULL, LOW_PRIORITY);
         E_handle_events();
     }
-    // TODO: New server/room, call function to clear lines & relevant globals!
-    // TODO: If previously in a non-lobby room, immediately re-join said room?
 }
 
 /* Check initial lobby join membership message for server's presence */
@@ -464,27 +489,41 @@ void check_for_server(){
     E_init();       
 }
 
-/* Join chat room with given room_name */                   // TODO: SET ROOM_NAME IN ADDITION TO ROOM_GROUP
-void join_chat_room(char *room_name, bool is_group_name){ 
-    int     ret;    
-    char    lobby[MAX_ROOM_NAME_LENGTH] = "";
-    char    prev_group[MAX_ROOM_NAME_LENGTH];
+/* Join chat room with given new_room */
+void join_chat_room(char *new_room, bool is_group_name){ 
+    update          *join_update;
+    join_payload    *payload;
+    int             ret;    
+    char            lobby[MAX_ROOM_NAME_LENGTH] = "";
+    char            prev_group[MAX_ROOM_NAME_LENGTH];
 
     // Ensure client is connected to a server
     if(connected){
         if(username_set){
-            // TODO: Message server to indicate room change
-            
+            // Create join update in buffer
+            join_update = (update *)mess;
+            join_update-> type = 2;
+            strcpy(join_update->username, username);
+            strcpy(join_update->chat_room, new_room);
+            payload = (join_payload *)&(join_update->payload);
+            payload->toggle = 1;
+
+            // Send message
+            ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, &room_group[0], 0, sizeof(update), mess);
+            if(ret < 0){
+                SP_error(ret);
+                close_client();
+            }
      
             // Store current room group
             strcpy(&prev_group[0], &room_group[0]);
          
             // Join new room group
             if(is_group_name){
-                strcpy(&room_group[0], room_name);
-                ret = SP_join(mbox, room_name);
+                strcpy(&room_group[0], new_room);
+                ret = SP_join(mbox, new_room);
             }else{
-                get_room_group(server_id, room_name, &room_group[0]);
+                get_room_group(server_id, new_room, &room_group[0]);
                 ret = SP_join(mbox, &room_group[0]);
             }
             if(ret != 0){
@@ -502,7 +541,8 @@ void join_chat_room(char *room_name, bool is_group_name){
                 // Clear previous lines and users
                 clear_lines();
                 clear_users();
-                printf("Joined room %s\n", room_name);
+                strcpy(room_name, new_room);
+                printf("Joined room %s\n", new_room);
             }
         }else
             printf("Error: must set a username before joining a room\n");
@@ -639,6 +679,9 @@ void request_history(){
 /* Display current (Spread) view */
 void display_view(){
     // TODO: Implement
+
+    // Should the client request it from the server, or should the server
+    // always keep the client up-to-date with the view status?
 }
 
 /* Send local username to server */
