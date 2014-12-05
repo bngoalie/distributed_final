@@ -450,6 +450,10 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
     
     completion_mask |= (1 << sender_server_id);
 
+    if (expected_completion_mask == completion_mask) {
+        /* TODO: send merging messages */ 
+    }
+
 }
 
 int should_choose_new_server(int current_max_seq, int new_max_seq, 
