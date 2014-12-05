@@ -21,9 +21,9 @@
 /* Globals */
 // Spread and connectivity globals
 char        username[MAX_USERNAME_LENGTH]; // TODO: Define macros for lengths?
-char        spread_name[40];
-char        private_group[40];
-char        room_group[MAX_ROOM_NAME_LENGTH];
+char        private_group[MAX_GROUP_NAME]; // TODO: is MAX_GROUP_NAME the right macro?
+char        room_group[MAX_GROUP_NAME]; // TODO: remove, use room_name w/ funciton
+char        room_name[MAX_ROOM_NAME_LENGTH];
 bool        connected = 0;
 bool        server_present;
 int         server_id;
@@ -31,7 +31,7 @@ mailbox     mbox;
 // Room data structures globals
 line_node   lines_list_head;    // Sentinel head, next points to newest line
 line_node   *lines_list_tail;   // Tail pointer to oldest line
-client_node  client_list_head;   // Sentinel head, next points to user (unordered)
+client_node client_list_head;   // Sentinel head, next points to user (unordered)
 int         num_lines;          // Total number of lines (up to 25 normally)
 // Message buffer
 char        *mess;
@@ -41,7 +41,7 @@ int main(){
     // Initialize globals
     strcpy(&username[0], "");
     num_lines = 0;
-    server_id = 0;
+    server_id = -1;
     if((mess = malloc(sizeof(server_client_mess))) == NULL){
         printf("Failed to malloc message buffer\n");
         close_client();
@@ -69,8 +69,8 @@ void parse_input(){
         case 'u':   // Change username
             change_username(&input[2]);
             break;
-        case 'c':   // Connect to server
-            connect_to_server(atoi((char *)&input[2]));  
+        case 'c':   // Connect to server (subtract 1 first)
+            connect_to_server(atoi((char *)&input[2])-1);  
             break;
         case 'j':   // Join chat room
             join_chat_room(&input[2], false); 
@@ -312,17 +312,17 @@ void connect_to_server(int new_id){
         mbox_temp = mbox;
 
     // Check that id is valid and new
-    if(new_id < 1 || new_id > 5)
+    if(new_id < 0 || new_id > 4)
         printf("Error: invalid server ID (range is 1-5)\n");
     else if (new_id == server_id) 
-        printf("Already connected to server %d!\n", server_id);
+        printf("Already connected to server %d!\n", server_id+1);
     else{
         // Prepare for possible event handler changes...
         E_exit_events();
         E_init();       
         // Connect to Spread daemon
-        printf("Connecting to server %d...\n", new_id);
-        ret = SP_connect_timeout(daemons[new_id - 1], "s1", 0, 1, // TODO: change "s1" to NULL
+        printf("Connecting to server %d...\n", new_id+1);
+        ret = SP_connect_timeout(daemons[new_id], "s1", 0, 1, // TODO: change "s1" to NULL
             &mbox, private_group, timeout);
         if(ret != ACCEPT_SESSION){
             // If unable to connect to daemon, indicate failure
@@ -330,7 +330,7 @@ void connect_to_server(int new_id){
                 mbox = mbox_temp; 
                 E_attach_fd(mbox, READ_FD, parse_update, 0, NULL, HIGH_PRIORITY);
             }
-            printf("Error: unable to connect to daemon for server %d\n", new_id);
+            printf("Error: unable to connect to daemon for server %d\n", new_id+1);
         }else{
             // If successful, join lobby group
             strcpy(&prev_room[0], &room_group[0]);
@@ -344,7 +344,7 @@ void connect_to_server(int new_id){
                     E_attach_fd(mbox, READ_FD, parse_update, 0, NULL, HIGH_PRIORITY);
                     strcpy(&room_group[0], &prev_room[0]);
                 }
-                printf("Error: unable to join lobby group for server %d\n", new_id);
+                printf("Error: unable to join lobby group for server %d\n", new_id+1);
             }else{
                 // Indicate success and store previous id
                 printf("Successfully joined group %s\n", &room_group[0]);
@@ -362,17 +362,17 @@ void connect_to_server(int new_id){
                     }
                     // Indicate success
                     connected = true;
-                    printf("Server %d detected in lobby group\n", server_id);
+                    printf("Server %d detected in lobby group\n", server_id+1);
                     // If username is already set, send to server
                     if(strcmp(&username[0], ""))
                         send_username_update();
                     // Attach file descriptor for incoming message handling
                     E_attach_fd(mbox, READ_FD, parse_update, 0, NULL, HIGH_PRIORITY);
                 }else{
-                    printf("Failed to detect server %d in lobby group\n", server_id);
+                    printf("Failed to detect server %d in lobby group\n", server_id+1);
                     server_id = temp_id;
                     if(connected){
-                        printf("Reverting to server %d\n", server_id);
+                        printf("Reverting to server %d\n", server_id+1);
                         mbox = mbox_temp;
                         E_attach_fd(mbox, READ_FD, parse_update, 0, NULL, HIGH_PRIORITY);
                         strcpy(&room_group[0], &prev_room[0]);
@@ -638,18 +638,62 @@ void send_username_update(){
 
 /* Update room display */
 void update_display(){
-    // TODO: Clear screen, iterate through and display lines
-    
-    // Iterate through lines data structure, build string array
-    
-    // Room and members at top, numbers text and likers on each line
-    
-    // TODO: Change printf messages to status string, printed at bottom
+    // Local vars
+    client_node *user_itr;
+    line_node *line_itr;
+    liker_node *like_itr;
+    int likes, line_num;
+
+    // Clear screen
+    printf("\033[2J\033[1;1H"); // TODO: check that this works (remove during debug?)
+
+    // Print room and users:
+    printf("Room: %s\n", room_name);
+    printf("Members: ");
+    user_itr = client_list_head.next;
+    while(user_itr != NULL){
+        printf("%s", user_itr->join_update->username);
+        if(user_itr->next != NULL)
+            printf(", ");
+        else
+            printf("\n");
+        user_itr = user_itr->next;
+    }
+
+    // Iterate through lines data structure
+    line_itr = lines_list_tail;
+    line_num = 0;
+    while(line_itr != NULL){
+        // Increment and print line number
+        printf("%6d ", ++line_num);
+        // Print line text
+        printf("%s80 ", (char *)&(line_itr->append_update->payload));
+        // Calculate number of likes
+        like_itr = line_itr->likers_list_head.next;
+        likes = 0;
+        while(like_itr != NULL){
+            likes++;
+            like_itr = like_itr->next;
+        }
+        // Print number of likes
+        if(likes)
+            printf("Likes: %d\n", likes);
+        line_itr = line_itr->prev;
+    }
+ 
+    // TODO: Possibly display recent status strings at bottom... 
 }
 
 /* Clear room data structure */
 void clear_room(){
-    // Iterate through line 
+    // Local vars
+    line_node *line_itr;
+
+    // Iterate through lines
+    line_itr = lines_list_head.next;
+    while(line_itr != NULL){
+        
+    }    
 }
 
 /* Free line node (and members) */
