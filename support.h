@@ -23,6 +23,7 @@
 #define MAX_ROOM_NAME_LENGTH    20
 #define MAX_LINE_LENGTH         80
 #define MAX_MESS_LEN            100000
+#define SERVER_INDEX_INDEX      3
 
 /* TYPE DEFINITIONS */
 
@@ -139,7 +140,10 @@ int compare_lts(lamport_timestamp lts1, lamport_timestamp lts2);
 /* Get Spread group for sending to specific server */
 void get_single_server_group(int server_id, char *group);
 
-/* Get Spread group for a specific chat room and server */
+int get_group_num_from_name(char *group_name);
+
+/* Get Spread group for a specific chat room and server.
+ * server_ids should start from index 0*/
 void get_room_group(int server_id, char *room_name, char *room_group);
 
 /* Get Spread group for a server lobby */

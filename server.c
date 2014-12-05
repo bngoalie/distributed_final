@@ -30,30 +30,40 @@ int	        Num_sent;
 struct      timeval start_time;
 struct      timeval end_time, end_time_last_send, end_time_last_receive;
 int         num_processes;
+/* These indices will start from 0 */
 int         process_index;
 int         seq;
 FILE        *fd = NULL;
 server_client_mess server_client_mess_buff;
-
-
 
 room_node room_list_head; // Should I make this the lobby?
 room_node *room_list_tail;
 update_node update_list_head;
 update_node *update_list_tail;
 update_node *server_updates_array[MAX_MEMBERS];
-
-/* TODO: Intent is to keep traack of updates received from each server
- * could be simply replaced with an int array for seqs, but need to update only when receive an 
- * update that is one higher than current. if receive an even higher seq, need to remember that received this seq.
- * This could evolve into some kind of sliding window mechnism liken that used in ex1 and ex2*/
-int most_recent_server_updates[MAX_MEMBERS]; // used for checking most recent seq from each server? TODO: replace 5 with macro. 
+server_message serv_msg_buff;
+char        server_names[MAX_MEMBERS][MAX_GROUP_NAME];
+int         server_status[MAX_MEMBERS];
+int         prev_server_status[MAX_MEMBERS];
+int         local_server_seq;
+int         local_counter;
+int         merge_state; 
+int         expected_completion_mask;
+int         completion_mask;
+int         num_servers_responsible_for_in_merge;
+int         server_responsibility_assign[MAX_MEMBERS];
+int         expected_max_seqs[MAX_MEMBERS];
 
 static	void	    Usage( int argc, char *argv[] );
 static  void        Print_help();
 static  void        Bye();
 
 int main(int argc, char *argv[]) {
+
+    for (int idx = 0; idx < MAX_MEMBERS; idx++) {
+        server_status[idx] = 0;
+        prev_server_status[idx] = 0;
+    }
 
     /* Set up list of rooms (set up the lobby) */
     room_list_head.next = NULL;
@@ -63,9 +73,17 @@ int main(int argc, char *argv[]) {
     /* Set up list of updates */
     update_list_head.next = NULL;
     update_list_tail = &update_list_head;   
+
+    merge_state = 0;
+    
+    expected_completion_mask = 0;
+    completion_mask = 0;
+    num_servers_responsible_for_in_merge = 0;
     
     for (int i = 0; i < MAX_MEMBERS; i++) {
         server_updates_array[i] = NULL;
+        server_responsibility_assign[i] = num_processes; 
+        expected_max_seqs[i] = 0;
     } 
 
     /* TODO: Read last known state from disk*/
@@ -211,7 +229,11 @@ void handle_append_update(update *new_update) {
             }
             char chat_room_group[MAX_GROUP_NAME];
             get_room_group(process_index, room_node->chat_room, chat_room_group);
-            int ret = SP_multicast(Mbox, FIFO_MESS, chat_room_group, 0, sizeof(int)+num_updates_to_send*sizeof(update), (char *) &server_client_mess_buff);
+            int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), chat_room_group, 0, num_updates_to_send*sizeof(update), (char *) &server_client_mess_buff);
+            if(ret < 0) {
+                SP_error(ret);
+                Bye();
+            }
         }
     }
 }
@@ -266,6 +288,15 @@ void handle_like_update(update *new_update) {
 
     if (should_send_to_client == 1) {
         /* TODO: send update to chat room group */
+        update *update_payload = (update *)(server_client_mess_buff.payload);
+        memcpy(update_payload, new_update, sizeof(update));
+        char chat_room_group[MAX_GROUP_NAME];
+        get_room_group(process_index, room_node->chat_room, chat_room_group);
+        int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), chat_room_group, 0, sizeof(update), (char *) &server_client_mess_buff);
+        if(ret < 0) {
+            SP_error(ret);
+            Bye();
+        }    
     }
 }
 
@@ -295,6 +326,16 @@ void handle_join_update(update *join_update, char *client_spread_group) {
     if (client_spread_group != NULL) {
         strcpy(client_list_head->next->client_group, client_spread_group); 
     }
+    /* TODO: send update to chat room group */
+    update *update_payload = (update *)(server_client_mess_buff.payload);
+    memcpy(update_payload, join_update, sizeof(update));
+    char chat_room_group[MAX_GROUP_NAME];
+    get_room_group(process_index, room_node->chat_room, chat_room_group);
+    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), chat_room_group, 0, sizeof(update), (char *) &server_client_mess_buff);
+    if(ret < 0) {
+        SP_error(ret);
+        Bye();
+    }    
 }
 
 /* Currently returns the liker_node associated with the given line_node. */
@@ -381,15 +422,81 @@ update_node * store_update(update *new_update) {
     return NULL;
 }
 
+void handle_server_update_bundle(server_message *recv_serv_msg, 
+                                    int message_size, char *sender) {
+    update *update_itr = (update *)&(recv_serv_msg->payload);
+    int num_updates = message_size/sizeof(update);
+    for (int idx = 0; idx < num_updates; idx++) {
+        handle_update(update_itr, sender);
+        update_itr++;
+    }
+    return;
+}
 
+void handle_leave_of_server(int left_server_index) {
+    /* TODO: write this */
+}
 
+void handle_start_merge(int *seq_array, int sender_server_id) {
+    /*server_responsibility_assign*/
+    for (int idx = 0; idx < num_processes; idx++) {
+        if (should_choose_new_server(expected_max_seqs[idx], seq_array[idx],
+                                     server_responsibility_assign[idx], 
+                                     sender_server_id)) {
+            server_responsibility_assign[idx] = sender_server_id;
+            expected_max_seqs[idx] = seq_array[idx];
+        }
+    }
+    
+    completion_mask |= (1 << sender_server_id);
+
+}
+
+int should_choose_new_server(int current_max_seq, int new_max_seq, 
+                             int current_server_id, int new_server_id) {
+    if (new_max_seq > current_max_seq 
+        || (new_max_seq == current_max_seq && new_server_id < current_server_id)) {
+        return 1;
+    }
+    return 0;
+}
+
+void initiate_merge() {
+    expected_completion_mask = 0;
+    completion_mask = 1;
+    completion_mask <<= process_index;
+    num_servers_responsible_for_in_merge = 0;
+    merge_state = 1;
+    int *max_seq_array = (int *)(serv_msg_buff.payload); 
+    for (int idx = 0; idx < num_processes; idx++) {
+        /* TODO: REMEMBER: first index is rightmost bit (idx)*/
+        expected_completion_mask |= (server_status[idx] << idx);
+        /* Set max known seq for this server */
+        max_seq_array[idx] = 0;
+        expected_max_seqs[idx] = 0;
+        if (server_updates_array[idx] != NULL) {
+            max_seq_array[idx] = (server_updates_array[idx]->update->lts).server_seq;
+            expected_max_seqs[idx] = max_seq_array[idx];
+        }
+        server_responsibility_assign[idx] = process_index; 
+
+    }
+
+    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), server_group, 1, 
+                           num_processes*sizeof(int), (char *) &serv_msg_buff);
+    /* TODO: consider clearing up serv_msg_buff after sending*/
+    if(ret < 0) {
+        SP_error(ret);
+        Bye();
+    }
+}
 
 static void	Read_message() {
     /* Local vars */
     static char	        mess[1200];
     char		    sender[MAX_GROUP_NAME];
     char		    target_groups[MAX_GROUPS][MAX_GROUP_NAME];
-   // membership_info memb_info;
+    membership_info memb_info;
     int		        num_groups;
     int		        service_type;
     int16		    mess_type;
@@ -413,9 +520,12 @@ static void	Read_message() {
             if (strcmp(target_groups[idx], server_group) == 0) {
                 /* The message is from the spread group for servers. */
                 server_message *recv_serv_msg = (server_message *)mess;
-                switch(recv_serv_msg->type) {
+                switch(mess_type) {
                     case 0: // regular update
-                        handle_update((update *)&(recv_serv_msg->payload), sender);
+                        handle_server_update_bundle(recv_serv_msg,ret, sender);
+                        break;
+                    case 1:
+                        handle_start_merge((int *)(recv_serv_msg->payload), get_group_num_from_name(sender));
                         break;
                 } 
             } else if (strcmp(target_groups[idx], personal_group) == 0) {
@@ -425,6 +535,55 @@ static void	Read_message() {
                  * (i.e. chat room groups) */
             }
         }	
+    } else if(Is_membership_mess(service_type)) {
+        ret = SP_get_memb_info(mess, service_type, &memb_info);
+        if (ret < 0) {
+                printf("BUG: membership message does not have valid body\n");
+                SP_error(ret);
+                Bye();
+        }
+		if (Is_reg_memb_mess(service_type)) {
+            if (DEBUG) {
+    			printf("Received REGULAR membership for group %s with %d members, where I am member %d:\n",
+	    			sender, num_groups, mess_type);
+                for (int i=0; i < num_groups; i++)
+                    printf("\t%s\n", &target_groups[i][0]);
+                printf("grp id is %d %d %d\n",memb_info.gid.id[0], memb_info.gid.id[1], memb_info.gid.id[2]);
+            }
+            if(!strcmp(sender, server_group)) {
+                int server_index;
+                int merge_case = 0;
+                for (int idx = 0; idx < num_processes; idx++) {
+                    prev_server_status[idx] = server_status[idx]; 
+                    server_status[idx] = 0;
+                }
+                for (int idx = 0; idx < num_groups; idx++) {
+                    server_index = atoi(&(target_groups[idx][SERVER_INDEX_INDEX]));
+                    server_status[server_index] = 1;
+                    if (!prev_server_status[server_index]) {
+                        merge_case = 1;   
+                    }
+                }
+                if (merge_case) {
+                    /* TODO Merge!*/
+                } else {
+                    /* TODO: Someone left. Figure out who by either comparing
+                     * prev_server_status and server_status or get memb_info*/
+                    for (int idx = 0; idx < num_groups; idx++) {
+                        /* If a server status change from 1 to 0 (1-0=1)*/
+                        if (prev_server_status[idx] - server_status[idx] == 1) {
+                           handle_leave_of_server(idx); 
+                        }
+                    }
+                }
+            }
+        }
+    } else if(Is_transition_mess(service_type)) {
+        printf("received TRANSITIONAL membership for group %s\n", sender);
+    } else if( Is_caused_leave_mess( service_type)){
+        printf("received membership message that left group %s\n", sender);
+    } else {
+        printf("received incorrecty membership message of type 0x%x\n", service_type);
     }
 }
 static void Usage(int argc, char *argv[])
@@ -432,20 +591,21 @@ static void Usage(int argc, char *argv[])
     /* TODO: consider just passing NULL as User when connecting to daeomn, 
      * or a naming scheming to designate servers by there id's. 
      * Probably not necessary, because servers should connect to different daemons. */
-	sprintf( User, "bglickm1-server" );
+
 	sprintf( Spread_name, PORT);
     sprintf( server_group, SPREAD_SERVER_GROUP);
-
 
     if (argc != 3) {
         Print_help();
     } else {
-        process_index   = atoi(argv[1]);    // Process index
+        process_index   = atoi(argv[1]) - 1;    // Process index
         num_processes   = atoi(argv[2]);    // Number of processes
 
         /* Set name of group where this server is only member */
         get_single_server_group(process_index, personal_group);
         
+        /* Set username to same as personal spread group*/
+        sprintf( User, personal_group);
 
         /* Check number of processes */
         if(num_processes > MAX_MEMBERS) {
