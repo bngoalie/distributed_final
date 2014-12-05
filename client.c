@@ -31,7 +31,7 @@ mailbox     mbox;
 // Room data structures globals
 line_node   lines_list_head;    // Sentinel head, next points to newest line
 line_node   *lines_list_tail;   // Tail pointer to oldest line
-liker_node  likers_list_head;   // Sentinel head, next points to user (unordered)
+client_node  client_list_head;   // Sentinel head, next points to user (unordered)
 int         num_lines;          // Total number of lines (up to 25 normally)
 // Message buffer
 char        *mess;
@@ -158,7 +158,7 @@ void process_append(update *append_update){
     line_node   *line_list_itr = &lines_list_head;
     line_node   *tmp;
     int         itr_lines = 0; 
-    update_node *new_update_node;
+    update      *new_update;
     
     // Iterate through lines to find insertion point, if one exists
     while(line_list_itr->next != NULL &&
@@ -185,16 +185,12 @@ void process_append(update *append_update){
         // Set timestamp
         tmp->lts = append_update->lts;
         // Create update node for line node
-        if((new_update_node = malloc(sizeof(update_node))) == NULL){
-            printf("Error: failed to malloc update_node\n");
-            close_client();
-        }
-        if((new_update_node->update = malloc(sizeof(update))) == NULL){
+        if((new_update = malloc(sizeof(update))) == NULL){
             printf("Error: failed to malloc update\n");
             close_client();
         }
-        memcpy(new_update_node->update, append_update, sizeof(update));
-        tmp->append_update_node = new_update_node; 
+        memcpy(new_update, append_update, sizeof(update));
+        tmp->append_update = new_update; 
         // Increment total number of lines and check limit
         if(++num_lines > 25){
             // Remove 26th line
@@ -202,8 +198,8 @@ void process_append(update *append_update){
             lines_list_tail = lines_list_tail->prev;
             lines_list_tail->next = NULL;
             // Free update node from 26th line
-            free(tmp->append_update_node);
-            // TODO: Free likers list, too! (Anything else we're missing?)
+            free(tmp->append_update);
+            // TODO: Free likers list, too! (Anything else missing?)
         }        
     }
 }
@@ -239,18 +235,21 @@ void process_like(update *like_update){
             tmp->next = line_itr->likers_list_head.next;
             line_itr->likers_list_head.next = tmp;
             // Malloc and set fields 
-            tmp->like_update_node = malloc(sizeof(update_node));
-            tmp->like_update_node->update = malloc(sizeof(update));
-            memcpy(&(tmp->like_update_node->update), like_update, sizeof(update));
+            tmp->like_update = malloc(sizeof(update));
+            memcpy(&(tmp->like_update), like_update, sizeof(update));
         }else{
             // If like toggle is 0, find username and remove node from list
             // Iterate through likers list
-            liker_itr = line_itr->likers_list_head.next;
-            while(liker_itr != NULL){
+            liker_itr = &(line_itr->likers_list_head);
+            while(liker_itr->next != NULL){
                 // Remove liker if found
-                if(!strcmp(&(liker_itr->like_update_node->update->username[0]),
+                if(!strcmp(&(liker_itr->next->like_update->username[0]),
                         &(like_update->username[0]))){
-                    // TODO: Add remove logic. The list is NOT doubly linked... crap. TODO
+                    tmp = liker_itr->next;
+                    liker_itr->next = liker_itr->next->next;
+                    // Free memory
+                    free(tmp->like_update);
+                    free(tmp);
                 }
             }
         }
@@ -259,21 +258,41 @@ void process_like(update *like_update){
 }
 
 /* Process join update from server */
-void process_join(update *join_update) {
+void process_join(update *join_update){
     // Local vars
     join_payload *payload;    
     client_node *tmp;
+    client_node *user_itr;
+    bool removed;
 
     // Cast payload to join payload
-    payload = (join payload*)&(join_update->payload)
+    payload = (join_payload*)&(join_update->payload);
 
     // Process according to state change
     if(payload->toggle == 1){
         // If joining, create new node (and malloc update)
         tmp = malloc(sizeof(client_node));
- 
+        tmp->join_update = malloc(sizeof(update));
+        memcpy(tmp->join_update, join_update, sizeof(update));
+        // Link node into existing list
+        tmp->next = client_list_head.next;
+        client_list_head.next = tmp;
     }else{
         // If leaving, find first username match and remove node (and free update)
+        removed = false;
+        user_itr = &client_list_head;
+        while(user_itr->next != NULL && !removed){
+            if(!strcmp(user_itr->next->join_update->username, join_update->username)){
+                // Matching username found, remove node from list
+                tmp = user_itr->next;
+                user_itr->next = user_itr->next->next;
+                // Free memory
+                free(tmp->join_update);
+                free(tmp);
+                removed = true;
+            }
+        }
+    }
 }
 
 /* Connect to server with given server_id */
@@ -432,7 +451,8 @@ void join_chat_room(char *room_name, bool is_group_name){
     // Ensure client is connected to a server
     if(connected){
         // TODO: Message server to indicate room change
-       
+        
+ 
         // Store current room group
         strcpy(&prev_group[0], &room_group[0]);
      
@@ -540,8 +560,8 @@ void like_line(int line_num, bool like){
             redundant = false;
             like_itr = line_itr->likers_list_head.next;
             while(like_itr != NULL){
-                payload = (like_payload *)&(like_itr->like_update_node->update->payload);
-                if(!strcmp(like_itr->like_update_node->update->username, &username[0]) &&
+                payload = (like_payload *)&(like_itr->like_update->payload);
+                if(!strcmp(like_itr->like_update->username, &username[0]) &&
                         payload->toggle == like)
                     redundant = true;
             }
@@ -625,6 +645,17 @@ void update_display(){
     // Room and members at top, numbers text and likers on each line
     
     // TODO: Change printf messages to status string, printed at bottom
+}
+
+/* Clear room data structure */
+void clear_room(){
+    // Iterate through line 
+}
+
+/* Free line node (and members) */
+void free_line(line_node *line){
+    free(line->append_update);
+    free(line); // Okay, maybe this didn't really warrant a function....
 }
 
 /* Close the client */
