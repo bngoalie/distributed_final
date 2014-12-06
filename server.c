@@ -609,7 +609,7 @@ void handle_lobby_client_join(char *client_name, int server_id,
             }
             tmp_node->next = client_itr->next;
             client_itr->next = tmp_node;
-            if (join_update->chat_room[0] != 0) {
+            if (join_update != NULL && join_update->chat_room[0] != 0) {
                 tmp_node->join_update = join_update;
             } else {
                 tmp_node->join_update = NULL;
