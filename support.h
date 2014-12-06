@@ -56,6 +56,7 @@ typedef struct {
 // Join payload
 typedef struct {
     int toggle; // 0 for leave, 1 for join
+    char client_name[MAX_GROUP_NAME];
 } join_payload;
 #define JOIN_PAYLOAD_SIZE sizeof(join_payload)
 
