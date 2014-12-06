@@ -72,7 +72,7 @@ int should_choose_new_server(int current_max_seq, int new_max_seq,
 void handle_client_like(update *client_update);
 void handle_lobby_client_join(char *client_name);
 void handle_lobby_client_leave(char *client_name);
-void handle_room_client_leave(update *leave_update, char *client_name, char *chat_room, int server_id);
+void handle_room_client_leave(update *leave_update, char *client_name);
 
 
 #endif
