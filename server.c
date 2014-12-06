@@ -806,29 +806,66 @@ void handle_client_view(update *client_update, char *sender) {
 }
 
 void handle_client_username(update *client_update, char *sender) {
-   /* char *chat_room = client_update->chat_room;
-    int notify_option = 2;
-    if (chat_room[0] == 0) {
-        * Client does not have a chat room, he is in the lobby, do not send 
-         * updates to anyone *
-         notify_option = 3;
+    client_node *client_itr = &room_list_head.client_heads[process_index];
+    while (client_itr->next != NULL
+        && strcmp(client_itr->next->client_group, sender) != 0) {
+        client_itr = client_itr->next;
     }
-    update *new_update = (update *)&serv_msg_buff;
-    memcpy(new_update, client_update, sizeof(update));
-    strcpy(((join_payload *)&new_update->payload)->client_name, sender);
-    new_update->type = 2;
-    new_update->lts.server_id = process_index;
-    * set join update to a leave.*
-    ((join_payload *)&new_update->payload)->toggle = 0;
-    if (DEBUG) {
-        printf("calling handle client leave\n");
+    if (client_itr->next == NULL) {
+        perror("received username change update when can't find client in lobby\n");
+        Bye();
     }
-    handle_lobby_client_leave(sender, notify_option, new_update, process_index);
-    ((join_payload *)&new_update->payload)->toggle = 1;
-    if (DEBUG) {
-        printf("calling handle client join\n");
+    
+    client_node *lobby_node = client_itr->next;
+    if(lobby_node->join_update != NULL) {
+        /* The client is in a chat room. we have to communicate this change to 
+         * the servers in the form of a leave then a join */
+        update *new_update = (update *)&serv_msg_buff;
+        memcpy(new_update, lobby_node->join_update, sizeof(update));
+        strcpy(((join_payload *)&new_update->payload)->client_name, sender);
+        new_update->type = 2;
+        new_update->lts.server_id = process_index;
+        new_update->lts.counter = ++local_counter;
+        new_update->lts.server_seq = ++local_server_seq;
+        ((join_payload *)&new_update->payload)->toggle = 0;
+        /* Store new update before handling it*/
+        update_node *ret_update_node = NULL;
+        if((ret_update_node = store_update(new_update)) == NULL) {
+            perror("unable to store new update for leave for changing username\n");
+            Bye();
+        }
+        handle_server_join_update(ret_update_node->update); 
+        if (DEBUG) {
+            printf("sending leave to servers in username\n");
+        }
+        /* Send new leave update to servers */
+        send_server_message(&serv_msg_buff, sizeof(update));
+
+        /* create new join update, same logic as leave update above */ 
+        new_update->lts.counter = ++local_counter;
+        new_update->lts.server_seq = ++local_server_seq;
+        ((join_payload *)&new_update->payload)->toggle = 1;        
+       
+        /*The change in username*/
+        strcpy(new_update->username, client_update->username);
+
+        /* Store new update before handling it*/
+        ret_update_node = NULL;
+        if((ret_update_node = store_update(new_update)) == NULL) {
+            perror("unable to store new update for leave for changing username\n");
+            Bye();
+        }
+        handle_server_join_update(ret_update_node->update); 
+        if (DEBUG) {
+            printf("sending join to server in username\n");
+        }
+        /* Send new leave update to servers */
+        send_server_message(&serv_msg_buff, sizeof(update));
+
     }
-    handle_lobby_client_join(sender, process_index, new_update, notify_option);*/
+
+    /* nothing changes in the lobby because we don't store the username in the
+     * client_node there. The handling of server join updates sets the update in the lobby */
 }
 
 void send_current_state_to_client(char *client_name, char *chat_room) {
