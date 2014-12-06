@@ -986,7 +986,92 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
 }
 
 void handle_client_history(update *client_update, char *client_name) {
+    char *chat_room = client_update->chat_room;
+    room_node *target_room = NULL;
+    if ((target_room = get_chat_room_node(chat_room)) == NULL ) {
+        perror("can't send state of non-existant room\n");
+        Bye();
+    }
+    
+    int upper_bound_updates_per_message = sizeof(server_client_mess)/sizeof(update);
+    update *update_itr = (update *)&serv_msg_buff;    
+    int     num_updates_itr = 0;
 
+    /* Sending all lines */
+    line_node *line_itr = (target_room->lines_list_head).next;
+    if (line_itr != NULL) {
+        while (line_itr != NULL) {
+            if (line_itr->append_update != NULL) {
+                /* copy update over to message to send */
+                memcpy(update_itr, line_itr->append_update, sizeof(update));
+                update_itr++;
+                if (++num_updates_itr == upper_bound_updates_per_message) {
+                    /* buffer is full, send it*/
+                    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+                                           client_name, 0, 
+                                           num_updates_itr*sizeof(update),
+                                           (char *) &serv_msg_buff);
+                    if(ret < 0) {
+                        SP_error(ret);
+                        Bye();
+                    }
+                    /* reset bundle*/
+                    update_itr = (update *)&serv_msg_buff;
+                    num_updates_itr = 0;
+                }
+                
+                /* Send likes of this append */
+                liker_node *liker_itr = line_itr->likers_list_head.next;
+                while (liker_itr != NULL) {
+                    if (liker_itr->like_update != NULL 
+                        && ((like_payload *)&liker_itr->like_update->payload)->toggle){
+                        /* This like node and a like, not unlike, update */
+                        /* add update to message buff */
+                        /* copy update over to message to send */
+                        memcpy(update_itr, liker_itr->like_update, sizeof(update));
+                        update_itr++;
+                        if (++num_updates_itr == upper_bound_updates_per_message) {
+                            /* buffer is full, send it*/
+                            int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+                                                   client_name, 0, 
+                                                   num_updates_itr*sizeof(update),
+                                                   (char *) &serv_msg_buff);
+                            if(ret < 0) {
+                                SP_error(ret);
+                                Bye();
+                            }
+                            /* reset bundle*/
+                            update_itr = (update *)&serv_msg_buff;
+                            num_updates_itr = 0;
+                        }
+                    }
+                    liker_itr = liker_itr->next;
+                }
+            }    
+            line_itr = line_itr->next;
+        }
+        /* if the bundle has updates to be sent, send the bundle */
+        if (num_updates_itr > 0) {
+            int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+                                   client_name, 0, 
+                                   num_updates_itr*sizeof(update),
+                                   (char *) &serv_msg_buff);
+            if(ret < 0) {
+                SP_error(ret);
+                Bye();
+            }
+        }
+        /* Indicate the end of history to the client with a history update */
+        ((update *)&serv_msg_buff)->type = 5;
+        int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+                               client_name, 0, 
+                               sizeof(update),
+                               (char *) &serv_msg_buff);
+        if(ret < 0) {
+            SP_error(ret);
+            Bye();
+        }
+    }
 }
 
 static void	Read_message() {
