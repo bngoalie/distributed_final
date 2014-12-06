@@ -71,7 +71,7 @@ void send_server_message(server_message *msg_to_send, int size_of_message);
 int should_choose_new_server(int current_max_seq, int new_max_seq, 
                              int current_server_id, int new_server_id);
 void handle_client_like(update *client_update);
-void handle_lobby_client_join(char *client_name, int server_id);
+void handle_lobby_client_join(char *client_name, int server_id, update *join_update, int notify_option);
 void handle_lobby_client_leave(char *client_name, int notify_option, update *leave_update, int server_id);
 void handle_room_client_leave(update *leave_update, char *client_name, int notify_option);
 

@@ -320,37 +320,13 @@ void handle_join_update(update *join_update, char *client_spread_group) {
     if (room_node == NULL) {
         room_node = append_chat_room_node(join_update->chat_room);
     }
-    client_node *client_list_head = &(room_node->client_heads[(join_update->lts).server_id]);  
-    /* find first client_node that has the same username and has a different toggle value*/
-    while (client_list_head->next != NULL 
-              && (strcmp(client_list_head->next->join_update->username, join_update->username) != 0
-              || ((join_payload *)&(client_list_head->next->join_update->payload))->toggle 
-                    != ((join_payload *)&(join_update->payload))->toggle)) {
-       client_list_head = client_list_head->next; 
+    int server_id = (join_update->lts).server_id;
+    int toggle = ((join_payload *)&(join_update->payload))->toggle;
+    if (toggle == 0) {
+        handle_lobby_client_leave(client_spread_group, 0, join_update, server_id); 
+    } else if (toggle == 1) {
+        handle_lobby_client_join(client_spread_group, server_id, join_update, 0); 
     }
-   
-    if (client_list_head->next == NULL) {
-        // create new client_node
-        if ((client_list_head->next = malloc(sizeof(client_node))) == NULL) {
-            perror("malloc error: new client node\n");
-            Bye();
-        }
-        client_list_head->next->next = NULL;
-    } 
-    client_list_head->next->join_update = join_update;
-    if (client_spread_group != NULL) {
-        strcpy(client_list_head->next->client_group, client_spread_group); 
-    }
-    /* send update to chat room group */
-    update *update_payload = (update *)(server_client_mess_buff.payload);
-    memcpy(update_payload, join_update, sizeof(update));
-    char chat_room_group[MAX_GROUP_NAME];
-    get_room_group(process_index, room_node->chat_room, chat_room_group);
-    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), chat_room_group, 0, sizeof(update), (char *) &server_client_mess_buff);
-    if(ret < 0) {
-        SP_error(ret);
-        Bye();
-    }    
 }
 
 /* Currently returns the liker_node associated with the given line_node. */
@@ -586,19 +562,104 @@ void send_server_message(server_message *msg_to_send, int size_of_message) {
     }
 }
 
-void handle_lobby_client_join(char *client_name, int server_id) {
-    client_node *client_node_head = &(room_list_head.client_heads[server_id]);
+void handle_lobby_client_join(char *client_name, int server_id, 
+                              update *join_update, int notify_option) {
+    client_node *lobby_client_node;
     client_node *tmp_node = NULL;
-    if ((tmp_node = malloc(sizeof(client_node))) == NULL) {
-        perror("error mallocing new client node\n");
-        Bye();   
+    client_node *client_itr = &(room_list_head.client_heads[server_id]);
+    if (server_id != process_index) {
+        if ((tmp_node = malloc(sizeof(client_node))) == NULL) {
+            perror("error mallocing new client node\n");
+            Bye();   
+        }
+        tmp_node->next = client_itr->next;
+        client_itr->next = tmp_node;
+        tmp_node->join_update = join_update;
+        /* TODO: this currently would include the #'s, which would include the
+         * machine name. Do we care? */
+        strcpy(tmp_node->client_group, client_name);
+        lobby_client_node = tmp_node;
+    } else {
+        while (client_itr->next != NULL 
+            && strcmp(client_itr->next->client_group, client_name) != 0) {
+            client_itr = client_itr->next;
+        }
+        lobby_client_node = client_itr->next;
+        if (lobby_client_node == NULL) {
+            if ((tmp_node = malloc(sizeof(client_node))) == NULL) {
+                perror("error mallocing new client node\n");
+                Bye();   
+            }
+            tmp_node->next = client_itr->next;
+            client_itr->next = tmp_node;
+            tmp_node->join_update = join_update;
+            /* TODO: this currently would include the #'s, which would include the
+             * machine name. Do we care? */
+            strcpy(tmp_node->client_group, client_name);
+            lobby_client_node = tmp_node;
+        }
     }
-    tmp_node->next = client_node_head->next;
-    client_node_head->next = tmp_node;
-    tmp_node->join_update = NULL;
-    /* TODO: this currently would include the #'s, which would include the
-     * machine name. Do we care? */
-    strcpy(tmp_node->client_group, client_name);
+
+    client_node *client_node_to_insert = NULL;
+    if (join_update != NULL) {
+        if (lobby_client_node->join_update != NULL) {
+            /* Find current, soon to be previous, chat room's client_node to move */
+            room_node *prev_room 
+                = get_chat_room_node(lobby_client_node->join_update->chat_room);
+            if (prev_room == NULL) {
+                perror("apparently a chat room does not exist for an already existing join update\n");
+                Bye();   
+            }
+            client_itr = &(prev_room->client_heads[server_id]);
+            while (client_itr->next != NULL 
+                    && strcmp(client_itr->next->client_group, client_name) != 0
+                    && ((client_itr->next->join_update->lts).server_id == process_index 
+                        || (client_itr->next->join_update->lts).server_id != server_id
+                        || strcmp(client_itr->next->join_update->username, 
+                                  join_update->username) != 0)) {
+                client_itr = client_itr->next; 
+            }
+            client_node_to_insert = client_itr->next;
+            if (client_node_to_insert == NULL) {
+                if ((tmp_node = malloc(sizeof(client_node))) == NULL) {
+                    perror("error mallocing new client node\n");
+                    Bye();   
+                }
+                tmp_node->join_update = join_update;
+                /* TODO: this currently would include the #'s, which would include the
+                 * machine name. Do we care? */
+                strcpy(tmp_node->client_group, client_name);
+                client_node_to_insert = tmp_node;
+            } else {
+                /* Remove the node from the chat room, to be inserted in new room */
+                client_itr->next = client_node_to_insert->next;
+            }
+        }
+        /* Create new client node in appropriate chat room*/ 
+        room_node *current_room = get_chat_room_node(join_update->chat_room);
+        if (current_room == NULL) {
+            current_room = append_chat_room_node(join_update->chat_room);
+        }
+        client_itr = &(current_room->client_heads[server_id]);
+        client_node_to_insert->next = client_itr->next;
+        client_itr->next = client_node_to_insert;
+        if (notify_option != 0) {
+            /* Notify servers of the leave */
+            send_server_message((server_message *)join_update, sizeof(update));
+        }
+        if (notify_option != 1) {
+            /* Other option is to notify the appropriate chat room group*/
+            char tmp_room_group[MAX_GROUP_NAME];
+            get_room_group(server_id, join_update->chat_room, tmp_room_group);
+            int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), 
+                                  tmp_room_group, 0, sizeof(update), 
+                                  (char *) join_update);
+            if(ret < 0) {
+                SP_error(ret);
+                Bye();
+            }
+        }
+    }
 }
 
 void handle_lobby_client_leave(char *client_name, int notify_option,
@@ -607,8 +668,7 @@ void handle_lobby_client_leave(char *client_name, int notify_option,
     client_node *client_itr = &(room_list_head.client_heads[process_index]);
     while (client_itr->next != NULL 
             && strcmp(client_itr->next->client_group, client_name) != 0
-            && (client_itr->next == NULL 
-                || (client_itr->next->join_update->lts).server_id == process_index 
+            && ((client_itr->next->join_update->lts).server_id == process_index 
                 || (client_itr->next->join_update->lts).server_id != server_id
                 || strcmp(client_itr->next->join_update->username, 
                           leave_update->username) != 0)) {
@@ -674,7 +734,7 @@ void handle_room_client_leave(update *leave_update, char *client_name, int notif
     if (notify_option != 0) {
         /* Notify servers of the leave */
         send_server_message((server_message *)leave_update, sizeof(update));
-    } 
+    }
     if (notify_option != 1) {
         /* Other option is to notify the appropriate chat room group*/
         char tmp_room_group[MAX_GROUP_NAME];
@@ -781,7 +841,8 @@ static void	Read_message() {
                 /* TODO: change in lobby group. Either someone left or joined. */
                 if (Is_caused_join_mess(service_type)) {
                     /* TODO: a single client joined the group */
-                    handle_lobby_client_join(memb_info.changed_member, process_index);
+                    handle_lobby_client_join(memb_info.changed_member, 
+                                             process_index, NULL,2);
                 } else if (Is_caused_leave_mess(service_type)
                             || Is_caused_disconnect_mess(service_type)) {
                     handle_lobby_client_leave(memb_info.changed_member, 2, NULL, process_index);
