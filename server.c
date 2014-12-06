@@ -18,7 +18,7 @@
 
 
 #define MAX_GROUPS      MAX_MEMBERS
-#define DEBUG           0
+#define DEBUG           1
 
 char	    User[80];
 char        Spread_name[80];

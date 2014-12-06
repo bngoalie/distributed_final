@@ -16,6 +16,7 @@
  */
 
 #include "client.h"
+#define DEBUG 1
 
 /* Globals */
 // Spread and connectivity globals
@@ -48,6 +49,7 @@ int main(){
     username[0] = 0;
     num_lines = 0;
     server_id = -1;
+    lines_list_tail = NULL;
     if((mess = malloc(sizeof(server_client_mess))) == NULL){
         printf("Failed to malloc message buffer\n");
         close_client();
@@ -138,25 +140,26 @@ void parse_update(){
 
     // Process based on type
     if(Is_regular_mess(service_type)){
-        if(((server_client_mess *)mess)->type == 0){
-            new_update = ((update *)(((server_client_mess *)mess)->payload));
-            for(unsigned int i = 0; i < ((ret-sizeof(int))/sizeof(update)); i++){
-                switch(new_update->type){
-                    case 0:
-                        process_append(new_update);
-                        break;
-                    case 1:
-                        process_like(new_update);
-                        break;
-                    case 2:
-                        process_join(new_update);
-                        break;
-                    default:
-                        printf("Error: received unknown update type!\n");
-                        break;
-                }
-                new_update++;
+        new_update = ((update *)(((server_client_mess *)mess)->payload));
+        for(unsigned int i = 0; i < (ret/sizeof(update)); i++){
+            if(DEBUG)
+                printf("Received update of type %d from server for username %s and room %s\n",
+                    new_update->type, new_update->username, new_update->chat_room);
+            switch(new_update->type){
+                case 0:
+                    process_append(new_update);
+                    break;
+                case 1:
+                    process_like(new_update);
+                    break;
+                case 2:
+                    process_join(new_update);
+                    break;
+                default:
+                    printf("Error: received unknown update type!\n");
+                    break;
             }
+            new_update++;
         }
         // Refresh Display
         update_display();
@@ -200,7 +203,7 @@ void process_append(update *append_update){
     liker_node  *tmp2;
     int         itr_lines = 0; 
     update      *new_update;
-    
+
     // Iterate through lines to find insertion point, if one exists
     while(line_list_itr->next != NULL &&
             compare_lts(line_list_itr->next->lts, append_update->lts) > 0){
@@ -380,8 +383,8 @@ void connect_to_server(int new_id){
         E_exit_events();
         E_init();       
         // Connect to Spread daemon
-        timeout.sec = 0;
-        timeout.usec = 500000;
+        timeout.sec = TIMEOUT_SEC;
+        timeout.usec = TIMEOUT_USEC;
         printf("Connecting to server %d...\n", new_id+1);
         ret = SP_connect_timeout(daemons[new_id], NULL, 0, 1,
             &mbox, private_group, timeout);
@@ -763,28 +766,30 @@ void update_display(){
 
     // Print room and users:
     printf("Room: %s\n", room_name);
-    printf("Members: ");
+    printf("Users: ");
     user_itr = client_list_head.next;
     while(user_itr != NULL){
         printf("%s", user_itr->join_update->username);
         if(user_itr->next != NULL)
             printf(", ");
-        else
-            printf("\n");
         user_itr = user_itr->next;
     }
-
+    printf("\n\n");
+    
     // Iterate through lines data structure
     line_itr = lines_list_tail;
     line_num = 0;
+
     while(line_itr != NULL){
         // Increment and print line number
         printf("%6d ", ++line_num);
         // Print line text
-        printf("%s80 ", (char *)&(line_itr->append_update->payload));
+        printf("%-80s ", (char *)&(line_itr->append_update->payload));
         // Calculate number of likes
         like_itr = line_itr->likers_list_head.next;
         likes = 0;
+        if(DEBUG)
+            printf("see this?\n");
         while(like_itr != NULL){
             likes++;
             like_itr = like_itr->next;
@@ -794,7 +799,7 @@ void update_display(){
             printf("Likes: %d\n", likes);
         line_itr = line_itr->prev;
     }
- 
+    fflush(stdout); 
     // TODO: Possibly display recent status strings at bottom... 
 }
 

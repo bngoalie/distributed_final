@@ -91,7 +91,6 @@ typedef struct {
  * 1: ack
  */
 typedef struct {
-    int type;
     char payload[MAX_MESS_LEN-sizeof(int)];
 } server_client_mess;
 

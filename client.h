@@ -24,7 +24,7 @@
 
 #define MAX_GROUPS      5
 #define TIMEOUT_SEC     0
-#define TIMEOUT_USEC    500
+#define TIMEOUT_USEC    500000
 #define DAEMON1 "10010@128.220.224.89"
 #define DAEMON2 "10010@128.220.224.90"
 #define DAEMON3 "10010@128.220.224.91"
