@@ -589,7 +589,7 @@ void handle_lobby_client_join(char *client_name, int server_id) {
 }
 
 void handle_lobby_client_leave(char *client_name, int notify_option,
-                               update *leave_update) {
+                               update *leave_update, int server_id) {
     /* Find the appropriate client node. If exists */
     client_node *client_itr = &(room_list_head.client_heads[process_index]);
     while (client_itr->next != NULL 
@@ -610,7 +610,7 @@ void handle_lobby_client_leave(char *client_name, int notify_option,
         /* TODO: determine what chat room currently in, remove that node, 
          * update servers */
         /* Create Leave Update that is sent to servers.*/
-        if (leave_update == NULL) {
+        if (leave_update == NULL && server_id == process_index) {
             update *leave_update = (update *)&serv_msg_buff;
             memcpy(leave_update, client_to_remove, sizeof(update));
             leave_update->type = 2;
@@ -618,8 +618,11 @@ void handle_lobby_client_leave(char *client_name, int notify_option,
             (leave_update->lts).counter = ++local_counter;
             (leave_update->lts).server_seq = ++local_server_seq;
             ((join_payload *)&(leave_update->payload))->toggle = 0;
+        } else if (leave_update == NULL) {
+            perror("The given leave_update was null and not for a local client. The server cannot create a leave_update for another server's client\n");
+            Bye();
         }
-        handle_room_client_leave(leave_update, client_name);
+        handle_room_client_leave(leave_update, client_name, notify_option);
     }
     /* Remove the client from the lobby. We no long know of him. */
     client_itr->next = client_to_remove->next;
@@ -655,7 +658,7 @@ void handle_room_client_leave(update *leave_update, char *client_name, int notif
     client_itr->next = client_to_remove->next;
     free(client_to_remove);
 
-    if (notify option != 0) {
+    if (notify_option != 0) {
         /* Notify servers of the leave */
         send_server_message((server_message *)leave_update, sizeof(update));
     } 
@@ -765,10 +768,10 @@ static void	Read_message() {
                 /* TODO: change in lobby group. Either someone left or joined. */
                 if (Is_caused_join_mess(service_type)) {
                     /* TODO: a single client joined the group */
-                    handle_lobby_client_join(memb_info.changed_member);
+                    handle_lobby_client_join(memb_info.changed_member, process_index);
                 } else if (Is_caused_leave_mess(service_type)
                             || Is_caused_disconnect_mess(service_type)) {
-                    handle_lobby_client_leave(memb_info.changed_member);
+                    handle_lobby_client_leave(memb_info.changed_member, 2, NULL, process_index);
                 } else if (Is_caused_network_mess(service_type)) {
                     /* TODO: figure out who left? DEAL WITH IT */
                 } else {
