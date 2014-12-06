@@ -10,7 +10,7 @@
 /*
  * Task List:
  * - TODO: History request AND receiving/displaying
- * - TODO: View receiving/displaying
+ * - TODO: View displaying
  * - TODO: Put most printf statements in ifdef DEFINE blocks??
  * - TODO: TEST EVERYTHING
  */
@@ -201,7 +201,8 @@ void parse_update(){
                     get_lobby_group(server_id, lobby);
                     SP_leave(mbox, lobby);
                     server_id = -1;
-                    room
+                    room_name[0] = 0;
+                    room_group[0] = 0;
                 } 
             }else if(Is_caused_network_mess(service_type)){
                 // TODO: Check for client/server partition?
