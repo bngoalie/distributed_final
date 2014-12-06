@@ -573,8 +573,8 @@ void send_server_message(server_message *msg_to_send, int size_of_message) {
     }
 }
 
-void handle_lobby_client_join(char *client_name) {
-    client_node *client_node_head = &(room_list_head.client_heads[process_index]);
+void handle_lobby_client_join(char *client_name, int server_id) {
+    client_node *client_node_head = &(room_list_head.client_heads[server_id]);
     client_node *tmp_node = NULL;
     if ((tmp_node = malloc(sizeof(client_node))) == NULL) {
         perror("error mallocing new client node\n");
@@ -588,10 +588,17 @@ void handle_lobby_client_join(char *client_name) {
     strcpy(tmp_node->client_group, client_name);
 }
 
-void handle_lobby_client_leave(char *client_name) {
+void handle_lobby_client_leave(char *client_name, int notify_option,
+                               update *leave_update) {
     /* Find the appropriate client node. If exists */
     client_node *client_itr = &(room_list_head.client_heads[process_index]);
-    while (client_itr->next != NULL && strcmp(client_itr->next->client_group, client_name)) {
+    while (client_itr->next != NULL 
+            && strcmp(client_itr->next->client_group, client_name) != 0
+            && (client_itr->next == NULL 
+                || (client_itr->next->join_update->lts).server_id == process_index 
+                || (client_itr->next->join_update->lts).server_id != server_id
+                || strcmp(client_itr->next->join_update->username, 
+                          leave_update->username) != 0)) {
         client_itr = client_itr->next;
     }
     if (client_itr->next == NULL) {
@@ -603,13 +610,15 @@ void handle_lobby_client_leave(char *client_name) {
         /* TODO: determine what chat room currently in, remove that node, 
          * update servers */
         /* Create Leave Update that is sent to servers.*/
-        update *leave_update = (update *)&serv_msg_buff;
-        memcpy(leave_update, client_to_remove, sizeof(update));
-        leave_update->type = 2;
-        (leave_update->lts).server_id = process_index;
-        (leave_update->lts).counter = ++local_counter;
-        (leave_update->lts).server_seq = ++local_server_seq;
-        ((join_payload *)&(leave_update->payload))->toggle = 0;
+        if (leave_update == NULL) {
+            update *leave_update = (update *)&serv_msg_buff;
+            memcpy(leave_update, client_to_remove, sizeof(update));
+            leave_update->type = 2;
+            (leave_update->lts).server_id = process_index;
+            (leave_update->lts).counter = ++local_counter;
+            (leave_update->lts).server_seq = ++local_server_seq;
+            ((join_payload *)&(leave_update->payload))->toggle = 0;
+        }
         handle_room_client_leave(leave_update, client_name);
     }
     /* Remove the client from the lobby. We no long know of him. */
@@ -630,11 +639,11 @@ void handle_room_client_leave(update *leave_update, char *client_name, int notif
     * leave_update is from this server, or the has same server_id and username */
 
     while (client_itr->next != NULL 
-            && (strcmp(client_itr->next->client_group, client_name) != 0
-                || (client_itr->next->join_update->lts).server_id != process_index)
-            && ((client_itr->next->join_update->lts).server_id != server_id
+            && strcmp(client_itr->next->client_group, client_name) != 0
+            && ((client_itr->next->join_update->lts).server_id == process_index 
+                || (client_itr->next->join_update->lts).server_id != server_id
                 || strcmp(client_itr->next->join_update->username, 
-                          leave_update->username) != 0) ) {
+                          leave_update->username) != 0)) {
         client_itr = client_itr->next;
     }
     if (client_itr->next == NULL) {
@@ -646,80 +655,11 @@ void handle_room_client_leave(update *leave_update, char *client_name, int notif
     client_itr->next = client_to_remove->next;
     free(client_to_remove);
 
-    if (notify option == 0) {
+    if (notify option != 0) {
         /* Notify servers of the leave */
         send_server_message((server_message *)leave_update, sizeof(update));
-    } else {
-        /* Other option is to notify the appropriate chat room group*/
-        char tmp_room_group[MAX_GROUP_NAME];
-        get_room_group(server_id, chat_room, tmp_room_group);
-        int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), 
-                              tmp_room_group, 0, sizeof(update), 
-                              (char *) leave_update);
-        if(ret < 0) {
-            SP_error(ret);
-            Bye();
-        }
-    }
-}
-
-void handle_client_leave(update *leave_update, char *client_name, int notify_option) {
-     /* Find the appropriate client node. If exists */
-    int server_id = (leave_update->lts).server_id;
-    client_node *client_itr = &(room_list_head.client_heads[process_index]);
-    while (client_itr->next != NULL && strcmp(client_itr->next->client_group, client_name)) {
-        client_itr = client_itr->next;
-    }
-    if (client_itr->next == NULL) {
-        perror("handle_lobby_client_leave calle on client not found in lobby");
-        Bye();
-    }
-    client_node *client_to_remove = client_itr->next;
-    if (client_to_remove->join_update != NULL) {
-        /* TODO: determine what chat room currently in, remove that node, 
-         * update servers */
-        /* Create Leave Update that is sent to servers.*/
-        update *leave_update = (update *)&serv_msg_buff;
-        memcpy(leave_update, client_to_remove, sizeof(update));
-        leave_update->type = 2;
-        (leave_update->lts).server_id = process_index;
-        (leave_update->lts).counter = ++local_counter;
-        (leave_update->lts).server_seq = ++local_server_seq;
-        ((join_payload *)&(leave_update->payload))->toggle = 0;
-        handle_room_client_leave(leave_update, client_name);
-    }
-    /* Remove the client from the lobby. We no long know of him. */
-    client_itr->next = client_to_remove->next;
-    /* TODO: ensure freeing correct. Check for errors? */
-    /* We do not free the updates themselves, they are maintained by proper 
-     * list of updates */
-    free(client_to_remove);
-   
-    int server_id = (leave_update->lts).server_id;
-    char *chat_room = leave_update->chat_room; 
-    room_node *chat_room_node = get_chat_room_node(chat_room);  
-    /* Find corresponding client in chat room. */
-    client_node *client_itr = &(chat_room_node->client_heads[server_id]);
-    while (client_itr->next != NULL 
-            && !strcmp(client_itr->next->client_group, client_name)) {
-        client_itr = client_itr->next;
-    }
-    if (client_itr->next == NULL) {
-        perror("unable to find client that was claimed to have left a chat_room.\n");
-        Bye();
-    }
-    /* Free/remove the apprpriate client. */
-    client_node *client_to_remove = client_itr->next;
-    client_itr->next = client_to_remove->next;
-    free(client_to_remove);
-
-    /* Remove from list of clients for the appropriate server */
-
-
-    if (notify option == 0) {
-        /* Notify servers of the leave */
-        send_server_message((server_message *)leave_update, sizeof(update));
-    } else {
+    } 
+    if (notify_option != 1) {
         /* Other option is to notify the appropriate chat room group*/
         char tmp_room_group[MAX_GROUP_NAME];
         get_room_group(server_id, chat_room, tmp_room_group);
