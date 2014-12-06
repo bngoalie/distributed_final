@@ -437,6 +437,32 @@ void handle_server_join_update(update *join_update) {
     }    
 }
 
+/* join updates from clients are never "leaves" */
+void handle_client_join_update(update *join_update, char *client_name) {
+    if (((join_payload *)&join_update->payload)->toggle == 0) {
+        perror("client's should never send leave updates\n");
+        Bye();
+    }
+    /* Create the update, store update, send to servers, handle as though received 
+     * from servers*/
+    /* Copy client name into payload*/
+    strcpy(((join_payload *)&join_update->payload)->client_name, client_name);
+    join_update->lts.server_id = process_index;
+    join_update->lts.server_seq = ++local_server_seq;
+    join_update->lts.counter = ++local_counter;
+    update_node *ret_update_node = store_update(join_update);
+    if (ret_update_node == NULL) {
+        perror("something went wrong in trying to store a new join update\n");
+        Bye();
+    }
+    /* Handle locally, which sends to clients */    
+    handle_server_join_update(ret_update_node->update);
+    
+    memcpy((update *)&serv_msg_buff, join_update, sizeof(update));
+    /* Send new update to servers */
+    send_server_message(&serv_msg_buff, sizeof(update)); 
+}
+
 void handle_join_update(update *join_update, char *client_spread_group, 
                         int notify_option) {
     int server_id = (join_update->lts).server_id;
