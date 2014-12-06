@@ -492,6 +492,7 @@ void handle_client_message(update *client_update, int mess_size, char *sender) {
             break;
         case 2:
             /* TODO: processes join update*/
+            handle_join_update(client_update, sender);
             break;
         case 3:
             /* TODO: processes username update*/
