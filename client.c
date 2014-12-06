@@ -240,6 +240,8 @@ void process_append(update *append_update){
         }
         memcpy(new_update, append_update, sizeof(update));
         tmp->append_update = new_update; 
+        tmp->likers_list_head.next = NULL;  // Need to set pointers to NULL!!
+       
         // Increment total number of lines and check limit
         if(++num_lines > 25){
             // Remove 26th line
