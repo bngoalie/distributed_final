@@ -162,7 +162,7 @@ void handle_update(update *new_update, char *private_spread_group) {
                 handle_like_update(new_update_node->update);
                 break;
             case 2:
-                handle_join_update(new_update_node->update, private_spread_group);
+                handle_join_update(new_update_node->update, private_spread_group, 0);
                 break;
             default:
                 perror("unexpected update type\n");
@@ -315,17 +315,16 @@ void handle_like_update(update *new_update) {
     }
 }
 
-void handle_join_update(update *join_update, char *client_spread_group) {
-    room_node *room_node = get_chat_room_node(join_update->chat_room);
-    if (room_node == NULL) {
-        room_node = append_chat_room_node(join_update->chat_room);
-    }
+void handle_join_update(update *join_update, char *client_spread_group, 
+                        int notify_option) {
     int server_id = (join_update->lts).server_id;
     int toggle = ((join_payload *)&(join_update->payload))->toggle;
     if (toggle == 0) {
-        handle_lobby_client_leave(client_spread_group, 0, join_update, server_id); 
+        handle_lobby_client_leave(client_spread_group, notify_option, 
+                                  join_update, server_id); 
     } else if (toggle == 1) {
-        handle_lobby_client_join(client_spread_group, server_id, join_update, 0); 
+        handle_lobby_client_join(client_spread_group, server_id, join_update, 
+                                 notify_option); 
     }
 }
 
@@ -492,6 +491,15 @@ void initiate_merge() {
 }
 
 void handle_client_message(update *client_update, int mess_size, char *sender) {
+    /* Check if have client */
+    client_node *client_itr = &(room_list_head.client_heads[process_index]);
+    while (client_itr->next != NULL 
+           && strcmp(client_itr->next->client_group, sender) != 0) {
+        client_itr = client_itr->next;
+    }
+    if (client_itr->next == NULL) {
+        return;
+    }
     int update_type = client_update->type;
     switch (update_type) {
         case 0:
@@ -504,14 +512,14 @@ void handle_client_message(update *client_update, int mess_size, char *sender) {
             break;
         case 2:
             /* processes join update*/
-            handle_join_update(client_update, sender);
+            handle_join_update(client_update, sender, 2);
             break;
         case 3:
             /* TODO: processes username update*/
-
+            handle_client_username(client_update, sender);
             break;
         case 4:
-            /* TODO: processes view update*/
+            /* processes view update*/
             handle_client_view(client_update, sender);
             break;
         case 5:
@@ -610,7 +618,7 @@ void handle_lobby_client_join(char *client_name, int server_id,
     }
 
     client_node *client_node_to_insert = NULL;
-    if (join_update != NULL) {
+    if (join_update != NULL && join_update->chat_room[0] != 0) {
         if (lobby_client_node->join_update != NULL) {
             /* Find current, soon to be previous, chat room's client_node to move */
             room_node *prev_room 
@@ -652,11 +660,11 @@ void handle_lobby_client_join(char *client_name, int server_id,
         client_itr = &(current_room->client_heads[server_id]);
         client_node_to_insert->next = client_itr->next;
         client_itr->next = client_node_to_insert;
-        if (notify_option != 0) {
+        if (notify_option != 0 && notify_option != 3) {
             /* Notify servers of the leave */
             send_server_message((server_message *)join_update, sizeof(update));
         }
-        if (notify_option != 1) {
+        if (notify_option != 1 && notify_option != 3) {
             /* Other option is to notify the appropriate chat room group*/
             char tmp_room_group[MAX_GROUP_NAME];
             get_room_group(server_id, join_update->chat_room, tmp_room_group);
@@ -748,11 +756,11 @@ void handle_room_client_leave(update *leave_update, char *client_name, int notif
     client_itr->next = client_to_remove->next;
     free(client_to_remove);
 
-    if (notify_option != 0) {
+    if (notify_option != 0 && notify_option != 3) {
         /* Notify servers of the leave */
         send_server_message((server_message *)leave_update, sizeof(update));
     }
-    if (notify_option != 1) {
+    if (notify_option != 1 && notify_option != 3) {
         /* Other option is to notify the appropriate chat room group*/
         char tmp_room_group[MAX_GROUP_NAME];
         get_room_group(server_id, chat_room, tmp_room_group);
@@ -777,6 +785,25 @@ void handle_client_view(update *client_update, char *sender) {
         SP_error(ret);
         Bye();
     }
+}
+
+void handle_client_username(update *client_update, char *sender) {
+    char *chat_room = client_update->chat_room;
+    int notify_option = 2;
+    if (chat_room[0] == 0) {
+        /* Client does not have a chat room, he is in the lobby, do not send 
+         * updates to anyone */
+         notify_option = 3;
+    }
+    update *new_update = (update *)&serv_msg_buff;
+    memcpy(new_update, client_update, sizeof(update));
+    new_update->type = 2;
+    new_update->lts.server_id = process_index;
+    /* set join update to a leave.*/
+    ((join_payload *)&new_update->payload)->toggle = 0;
+    handle_lobby_client_leave(sender, notify_option, new_update, process_index);
+    ((join_payload *)&new_update->payload)->toggle = 1;
+    handle_lobby_client_join(sender, process_index, new_update, notify_option);
 }
 
 static void	Read_message() {
