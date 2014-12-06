@@ -16,12 +16,14 @@
  */
 
 #include "client.h"
+#define DEBUG 1
 
 /* Globals */
 // Spread and connectivity globals
 char        username[MAX_USERNAME_LENGTH]; 
 char        private_group[MAX_GROUP_NAME]; 
 char        room_group[MAX_GROUP_NAME];
+char        server_group[MAX_GROUP_NAME];
 char        room_name[MAX_ROOM_NAME_LENGTH];
 bool        connected;
 bool        username_sent;
@@ -47,6 +49,7 @@ int main(){
     username[0] = 0;
     num_lines = 0;
     server_id = -1;
+    lines_list_tail = NULL;
     if((mess = malloc(sizeof(server_client_mess))) == NULL){
         printf("Failed to malloc message buffer\n");
         close_client();
@@ -110,6 +113,7 @@ void parse_update(){
     membership_info memb_info;
     update  *new_update;
     char    *member;
+    char    lobby[MAX_USERNAME_LENGTH];
     char    server[MAX_USERNAME_LENGTH];
     char    sender[MAX_GROUP_NAME];
     char    target_groups[MAX_GROUPS][MAX_GROUP_NAME];
@@ -137,25 +141,26 @@ void parse_update(){
 
     // Process based on type
     if(Is_regular_mess(service_type)){
-        if(((server_client_mess *)mess)->type == 0){
-            new_update = ((update *)(((server_client_mess *)mess)->payload));
-            for(unsigned int i = 0; i < ((ret-sizeof(int))/sizeof(update)); i++){
-                switch(new_update->type){
-                    case 0:
-                        process_append(new_update);
-                        break;
-                    case 1:
-                        process_like(new_update);
-                        break;
-                    case 2:
-                        process_join(new_update);
-                        break;
-                    default:
-                        printf("Error: received unknown update type!\n");
-                        break;
-                }
-                new_update++;
+        new_update = ((update *)(((server_client_mess *)mess)->payload));
+        for(unsigned int i = 0; i < (ret/sizeof(update)); i++){
+            if(DEBUG)
+                printf("Received update of type %d from server for username %s and room %s\n",
+                    new_update->type, new_update->username, new_update->chat_room);
+            switch(new_update->type){
+                case 0:
+                    process_append(new_update);
+                    break;
+                case 1:
+                    process_like(new_update);
+                    break;
+                case 2:
+                    process_join(new_update);
+                    break;
+                default:
+                    printf("Error: received unknown update type!\n");
+                    break;
             }
+            new_update++;
         }
         // Refresh Display
         update_display();
@@ -179,6 +184,10 @@ void parse_update(){
                     clear_lines();
                     clear_users();
                     connected = 0;
+                    SP_leave(mbox, room_group);
+                    get_lobby_group(server_id, lobby);
+                    SP_leave(mbox, lobby);
+                    server_id = -1;
                 } 
             }else if(Is_caused_network_mess(service_type)){
                 // TODO: Check for client/server partition?
@@ -199,7 +208,7 @@ void process_append(update *append_update){
     liker_node  *tmp2;
     int         itr_lines = 0; 
     update      *new_update;
-    
+
     // Iterate through lines to find insertion point, if one exists
     while(line_list_itr->next != NULL &&
             compare_lts(line_list_itr->next->lts, append_update->lts) > 0){
@@ -379,8 +388,8 @@ void connect_to_server(int new_id){
         E_exit_events();
         E_init();       
         // Connect to Spread daemon
-        timeout.sec = 0;
-        timeout.usec = 500000;
+        timeout.sec = TIMEOUT_SEC;
+        timeout.usec = TIMEOUT_USEC;
         printf("Connecting to server %d...\n", new_id+1);
         ret = SP_connect_timeout(daemons[new_id], NULL, 0, 1,
             &mbox, private_group, timeout);
@@ -424,6 +433,7 @@ void connect_to_server(int new_id){
                         join_chat_room(room_group, true); // TODO: is this a problem if in lobby?
                     }
                     // Indicate success
+                    get_single_server_group(server_id, server_group); // get server public group
                     connected = true;
                     printf("Server %d detected in lobby group\n", server_id+1);
                     // If username is already set, send to server
@@ -527,7 +537,7 @@ void join_chat_room(char *new_room, bool is_group_name){
             payload->toggle = 1;
 
             // Send message
-            ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, room_group, 0, sizeof(update), mess);
+            ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
             if(ret < 0){
                 SP_error(ret);
                 close_client();
@@ -603,7 +613,7 @@ void append_line(char *new_line){
         strcpy((char *)&(append->payload), new_line);
 
         // Send update to current server
-        ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, &room_group[0], 0, sizeof(update), mess);
+        ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
         if(ret < 0){
             SP_error(ret);
             close_client();
@@ -668,7 +678,7 @@ void like_line(int line_num, bool like){
                     payload->lts = line_itr->lts;
 
                     // Send update to current server
-                    ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, room_group, 0, sizeof(update), mess);
+                    ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
                     if(ret < 0){
                         SP_error(ret);
                         close_client();
@@ -698,7 +708,7 @@ void send_username_update(){
         strcpy(username_update->chat_room, room_name);
 
         // Send to server
-        ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, room_group, 0, sizeof(update), mess);
+        ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
         if(ret < 0){
             SP_error(ret);
             close_client();
@@ -722,7 +732,7 @@ void request_view(){
     // No payload for this message type
 
     // Send to server
-    ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, room_group, 0, sizeof(update), mess);
+    ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
     if(ret < 0){
         SP_error(ret);
         close_client();
@@ -761,38 +771,49 @@ void update_display(){
 
     // Print room and users:
     printf("Room: %s\n", room_name);
-    printf("Members: ");
+    printf("Users: ");
     user_itr = client_list_head.next;
     while(user_itr != NULL){
         printf("%s", user_itr->join_update->username);
         if(user_itr->next != NULL)
             printf(", ");
-        else
-            printf("\n");
         user_itr = user_itr->next;
     }
-
+    printf("\n\n");
+    
     // Iterate through lines data structure
     line_itr = lines_list_tail;
     line_num = 0;
-    while(line_itr != NULL){
+
+    while(line_itr != NULL && line_itr != &lines_list_head){
         // Increment and print line number
         printf("%6d ", ++line_num);
+        fflush(stdout); 
         // Print line text
-        printf("%s80 ", (char *)&(line_itr->append_update->payload));
+        printf("%-80s ", (char *)&(line_itr->append_update->payload));
+        fflush(stdout); 
         // Calculate number of likes
         like_itr = line_itr->likers_list_head.next;
         likes = 0;
+        if(DEBUG)
+            printf("Just before iterating likes\n");
+        // Counter number of likes
         while(like_itr != NULL){
+            printf("Like??\n");
             likes++;
+            printf("LIKE!\n");
             like_itr = like_itr->next;
         }
         // Print number of likes
         if(likes)
             printf("Likes: %d\n", likes);
+        else
+            printf("\n");
         line_itr = line_itr->prev;
+
     }
- 
+    printf("\n");
+    fflush(stdout); 
     // TODO: Possibly display recent status strings at bottom... 
 }
 

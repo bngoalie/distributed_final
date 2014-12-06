@@ -18,7 +18,7 @@
 
 
 #define MAX_GROUPS      MAX_MEMBERS
-#define DEBUG           0
+#define DEBUG           1
 
 char	    User[80];
 char        Spread_name[80];
@@ -131,8 +131,21 @@ int main(int argc, char *argv[]) {
     ret = SP_join(Mbox, personal_group);
     if (ret < 0) {
         SP_error(ret);
+        Bye();
     }
 
+    /* Join lobby group */
+    get_lobby_group(process_index, lobby_group);
+    ret = SP_join(Mbox, lobby_group);
+    if (ret < 0) {
+        SP_error(ret);
+        Bye();
+    }
+
+    /* Configure event handler */
+    E_init();
+    E_attach_fd(Mbox, READ_FD, Read_message, 0, NULL, HIGH_PRIORITY);
+    E_handle_events();
 }
 
 void handle_update(update *new_update, char *private_spread_group) {
@@ -524,6 +537,13 @@ void handle_client_append(update *client_update) {
     (new_update->lts).counter = ++local_counter;
     (new_update->lts).server_seq = ++local_server_seq;
     (new_update->lts).server_id = process_index;
+    
+    if(DEBUG){
+        append_payload *payload = (append_payload *)&(client_update->payload);
+        printf("Received append from client\n");
+        printf("Message: %s\n, Username: %s\n, Room: %s\n",
+           payload->message, client_update->username, client_update->chat_room);
+    }
 
     /* Apply the update */
     handle_update(new_update, Private_group);
@@ -794,7 +814,7 @@ void handle_client_username(update *client_update, char *sender) {
 
 static void	Read_message() {
     /* Local vars */
-    static char	        mess[MAX_MESS_LEN];
+    static char	    mess[MAX_MESS_LEN];
     char		    sender[MAX_GROUP_NAME];
     char		    target_groups[MAX_GROUPS][MAX_GROUP_NAME];
     membership_info memb_info;
