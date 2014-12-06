@@ -706,11 +706,11 @@ void handle_lobby_client_leave(char *client_name, int notify_option,
         /* Create Leave Update that is sent to servers.*/
         if (leave_update == NULL && server_id == process_index) {
             if (DEBUG) printf("create new_leave_update\n");
-            update *new_leave_update = (update *)&serv_msg_buff;
-            memcpy(new_leave_update, client_to_remove->join_update, sizeof(update));
-            new_leave_update->type = 2;
-            (new_leave_update->lts).server_id = process_index;
-            ((join_payload *)&(new_leave_update->payload))->toggle = 0;
+            leave_update = (update *)&serv_msg_buff;
+            memcpy(leave_update, client_to_remove->join_update, sizeof(update));
+            leave_update->type = 2;
+            (leave_update->lts).server_id = process_index;
+            ((join_payload *)&(leave_update->payload))->toggle = 0;
         } else if (leave_update == NULL) {
             perror("The given leave_update was null and not for a local client. The server cannot create a leave_update for another server's client\n");
             Bye();
