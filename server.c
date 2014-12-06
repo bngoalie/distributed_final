@@ -582,22 +582,9 @@ void send_server_message(server_message *msg_to_send, int size_of_message) {
 
 void handle_lobby_client_join(char *client_name, int server_id, 
                               update *join_update, int notify_option) {
-    client_node *lobby_client_node;
+    client_node *lobby_client_node = NULL;
     client_node *tmp_node = NULL;
     client_node *client_itr = &(room_list_head.client_heads[server_id]);
-/*    if (server_id != process_index) {
-        if ((tmp_node = malloc(sizeof(client_node))) == NULL) {
-            perror("error mallocing new client node\n");
-            Bye();   
-        }
-        tmp_node->next = client_itr->next;
-        client_itr->next = tmp_node;
-        //tmp_node->join_update = join_update;
-        * TODO: this currently would include the #'s, which would include the
-         * machine name. Do we care? *
-        strcpy(tmp_node->client_group, client_name);
-        lobby_client_node = tmp_node;
-    } else {*/
     /* Find in lobby */
     while (client_itr->next != NULL
         && strcmp(client_itr->next->client_group, client_name) != 0) {
@@ -612,17 +599,12 @@ void handle_lobby_client_join(char *client_name, int server_id,
         }
         tmp_node->next = client_itr->next;
         client_itr->next = tmp_node;
-/*            if (join_update != NULL && join_update->chat_room[0] != 0) {
-            tmp_node->join_update = join_update;
-        } else {*/
-            tmp_node->join_update = NULL;
-   //     }
+        tmp_node->join_update = NULL;
         /* TODO: this currently would include the #'s, which would include the
          * machine name. Do we care? */
         strcpy(tmp_node->client_group, client_name);
         lobby_client_node = tmp_node;
     }
-// }
 
     client_node *client_node_to_insert = NULL;
     if (join_update != NULL && join_update->chat_room[0] != 0) {
@@ -702,14 +684,7 @@ void handle_lobby_client_leave(char *client_name, int notify_option,
     /* Find the appropriate client node. If exists */
     client_node *client_itr = &(room_list_head.client_heads[process_index]);
     while (client_itr->next != NULL 
-            && strcmp(client_itr->next->client_group, client_name) != 0
-           /* && (leave_update == NULL
-                || client_itr->next->join_update == NULL
-                || (client_itr->next->join_update->lts).server_id == process_index 
-                || (client_itr->next->join_update->lts).server_id != server_id
-                || strcmp(client_itr->next->join_update->username, 
-                          leave_update->username) != 0
-                || strcmp(client_itr->next->join_update->chat_room, leave_update->chat_room) != 0)*/) {
+            && strcmp(client_itr->next->client_group, client_name) != 0 ) {
         client_itr = client_itr->next;
     }
     if (client_itr->next == NULL) {
@@ -727,8 +702,6 @@ void handle_lobby_client_leave(char *client_name, int notify_option,
             memcpy(new_leave_update, client_to_remove->join_update, sizeof(update));
             new_leave_update->type = 2;
             (new_leave_update->lts).server_id = process_index;
-/*            (new_leave_update->lts).counter = ++local_counter;
-            (new_leave_update->lts).server_seq = ++local_server_seq;*/
             ((join_payload *)&(new_leave_update->payload))->toggle = 0;
         } else if (leave_update == NULL) {
             perror("The given leave_update was null and not for a local client. The server cannot create a leave_update for another server's client\n");
@@ -763,11 +736,7 @@ void handle_room_client_leave(update *leave_update, char *client_name, int notif
     * leave_update is from this server, or the has same server_id and username */
 
     while (client_itr->next != NULL 
-            && strcmp(client_itr->next->client_group, client_name) != 0
-    /*        && ((client_itr->next->join_update->lts).server_id == process_index 
-                || (client_itr->next->join_update->lts).server_id != server_id
-                || strcmp(client_itr->next->join_update->username, 
-                          leave_update->username) != 0)*/) {
+            && strcmp(client_itr->next->client_group, client_name) != 0 ) {
         client_itr = client_itr->next;
     }
     if (client_itr->next == NULL) {
