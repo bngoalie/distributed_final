@@ -807,8 +807,14 @@ void handle_client_username(update *client_update, char *sender) {
     new_update->lts.server_id = process_index;
     /* set join update to a leave.*/
     ((join_payload *)&new_update->payload)->toggle = 0;
+    if (DEBUG) {
+        printf("calling handle client leave\n");
+    }
     handle_lobby_client_leave(sender, notify_option, new_update, process_index);
     ((join_payload *)&new_update->payload)->toggle = 1;
+    if (DEBUG) {
+        printf("calling handle client join\n");
+    }
     handle_lobby_client_join(sender, process_index, new_update, notify_option);
 }
 
