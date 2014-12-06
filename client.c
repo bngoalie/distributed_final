@@ -113,6 +113,7 @@ void parse_update(){
     membership_info memb_info;
     update  *new_update;
     char    *member;
+    char    lobby[MAX_USERNAME_LENGTH];
     char    server[MAX_USERNAME_LENGTH];
     char    sender[MAX_GROUP_NAME];
     char    target_groups[MAX_GROUPS][MAX_GROUP_NAME];
@@ -183,6 +184,10 @@ void parse_update(){
                     clear_lines();
                     clear_users();
                     connected = 0;
+                    SP_leave(mbox, room_group);
+                    get_lobby_group(server_id, lobby);
+                    SP_leave(mbox, lobby);
+                    server_id = -1;
                 } 
             }else if(Is_caused_network_mess(service_type)){
                 // TODO: Check for client/server partition?
@@ -780,25 +785,34 @@ void update_display(){
     line_itr = lines_list_tail;
     line_num = 0;
 
-    while(line_itr != NULL){
+    while(line_itr != NULL && line_itr != &lines_list_head){
         // Increment and print line number
         printf("%6d ", ++line_num);
+        fflush(stdout); 
         // Print line text
         printf("%-80s ", (char *)&(line_itr->append_update->payload));
+        fflush(stdout); 
         // Calculate number of likes
         like_itr = line_itr->likers_list_head.next;
         likes = 0;
         if(DEBUG)
-            printf("see this?\n");
+            printf("Just before iterating likes\n");
+        // Counter number of likes
         while(like_itr != NULL){
+            printf("Like?? ");
             likes++;
+            printf("LIKE! ");
             like_itr = like_itr->next;
         }
         // Print number of likes
         if(likes)
             printf("Likes: %d\n", likes);
+        else
+            printf("\n");
         line_itr = line_itr->prev;
+
     }
+    printf("\n");
     fflush(stdout); 
     // TODO: Possibly display recent status strings at bottom... 
 }
