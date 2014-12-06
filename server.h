@@ -49,6 +49,7 @@ typedef start_merge_payload update_request_payload;
 /* The start node will be one behind where it actually wants to start looking,
  * because list has a sentinal node used of looking one node ahead. 
  * TODO: if end is set to null, default to end of queue (or just ignore it) */
+void Read_message();
 void handle_like_update(update *new_update);
 liker_node * get_liker_node(line_node *line_node);
 liker_node * append_liker_node(line_node *line_node);

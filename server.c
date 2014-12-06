@@ -131,8 +131,21 @@ int main(int argc, char *argv[]) {
     ret = SP_join(Mbox, personal_group);
     if (ret < 0) {
         SP_error(ret);
+        Bye();
     }
 
+    /* Join lobby group */
+    get_lobby_group(process_index, lobby_group);
+    ret = SP_join(Mbox, lobby_group);
+    if (ret < 0) {
+        SP_error(ret);
+        Bye();
+    }
+
+    /* Configure event handler */
+    E_init();
+    E_attach_fd(Mbox, READ_FD, Read_message, 0, NULL, HIGH_PRIORITY);
+    E_handle_events();
 }
 
 void handle_update(update *new_update, char *private_spread_group) {
@@ -678,7 +691,7 @@ void handle_room_client_leave(update *leave_update, char *client_name, int notif
 
 static void	Read_message() {
     /* Local vars */
-    static char	        mess[MAX_MESS_LEN];
+    static char	    mess[MAX_MESS_LEN];
     char		    sender[MAX_GROUP_NAME];
     char		    target_groups[MAX_GROUPS][MAX_GROUP_NAME];
     membership_info memb_info;
