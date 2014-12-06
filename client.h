@@ -73,8 +73,8 @@ void like_line(int line_num, bool like);
 /* Request history */
 void request_history();
 
-/* Display current (Spread) view */
-void display_view();
+/* Request current Spread/server view */
+void request_view();
 
 /* Send username to server */
 void send_username_update();

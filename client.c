@@ -9,12 +9,8 @@
 
 /*
  * Task List:
- * - TODO: Handle membership messages
- * - TODO: Finish redundant like/unlike checking
- * - TODO: History request
- * - TODO: View request
- * - TODO: Verify mailbox revert functionality
- * - TODO: Change name to NULL
+ * - TODO: History request AND receiving/displaying
+ * - TODO: View receiving/displaying
  * - TODO: Put most printf statements in ifdef DEFINE blocks
  * - TODO: TEST EVERYTHING
  */
@@ -28,7 +24,7 @@ char        private_group[MAX_GROUP_NAME];
 char        room_group[MAX_GROUP_NAME];
 char        room_name[MAX_ROOM_NAME_LENGTH];
 bool        connected;
-bool        username_set;
+bool        username_sent;
 bool        server_present;
 int         server_id;
 mailbox     mbox;
@@ -44,7 +40,8 @@ char        *mess;
 int main(){
     // Initialize globals
     connected = false;
-    username_set = false;
+    username_sent = false;
+    server_present = false;
     room_group[0] = 0;
     room_name[0] = 0;
     username[0] = 0;
@@ -108,7 +105,7 @@ void parse_input(){
     fflush(stdout);
 }
 
-/* Parse update from server */
+/* Parse update from server */       // TODO: HANDLE RECEIVING AND DISPLAYING VIEW!!
 void parse_update(){
     membership_info memb_info;
     update  *new_update;
@@ -129,6 +126,12 @@ void parse_update(){
     if(ret < 0)
     {
         SP_error(ret);
+        if(ret == -8)
+            printf("Disconnected from Spread daemon. Please try connecting to another server.\n");
+            clear_lines();
+            clear_users();
+            connected = 0;
+            server_id = -1;
         close_client();
     }
 
@@ -158,9 +161,9 @@ void parse_update(){
         update_display();
 
     }else if(Is_membership_mess(service_type)){
-        // TODO: Handle membership changes
-        //  More specifically: detect loss of server, notify user
-        ret - SP_get_memb_info(mess, service_type, &memb_info);
+        // Handle membership changes
+        // More specifically, detect loss of server, notify user
+        ret = SP_get_memb_info(mess, service_type, &memb_info);
         if(ret < 0){
             printf("Membership message does not have a valid body\n");
             SP_error(ret);
@@ -173,11 +176,13 @@ void parse_update(){
                 get_single_server_group(server_id, server);
                 if(!strcmp(member, server)){
                     printf("Lost connection with server %d\n", server_id+1);
-                    // TODO: Handle disconnect logic
+                    clear_lines();
+                    clear_users();
+                    connected = 0;
                 } 
             }else if(Is_caused_network_mess(service_type)){
-                // TODO: Check for client/server partition
-                
+                // TODO: Check for client/server partition?
+                // We might not need to handle this client-side
             }
         }
         
@@ -422,6 +427,7 @@ void connect_to_server(int new_id){
                     connected = true;
                     printf("Server %d detected in lobby group\n", server_id+1);
                     // If username is already set, send to server
+                    username_sent = false;
                     if(strcmp(&username[0], ""))
                         send_username_update();
                     // Attach file descriptor for incoming message handling
@@ -511,7 +517,7 @@ void join_chat_room(char *new_room, bool is_group_name){
 
     // Ensure client is connected to a server
     if(connected){
-        if(username_set){
+        if(username_sent){
             // Create join update in buffer
             join_update = (update *)mess;
             join_update-> type = 2;
@@ -613,7 +619,7 @@ void like_line(int line_num, bool like){
     like_payload *payload;
     line_node *line_itr;
     liker_node *like_itr;
-    bool redundant;
+    bool already_liked;
     char lobby[MAX_ROOM_NAME_LENGTH];
     int ret;
 
@@ -635,65 +641,45 @@ void like_line(int line_num, bool like){
                 if(line_itr == NULL)
                     printf("Error: hit null node while iterating lines - this shouldn't happen\n");
             }
-            
-            // Check for redundant like/unlike TODO: This is not complete. Only checks likes
-            redundant = false;
-            like_itr = line_itr->likers_list_head.next;
-            while(like_itr != NULL){
-                payload = (like_payload *)&(like_itr->like_update->payload);
-                if(!strcmp(like_itr->like_update->username, &username[0]) &&
-                        payload->toggle == like)
-                    redundant = true;
-            }
-            if(redundant)
-                printf("Error: This username already %s line %d!\n",
-                    like ? "liked" : "unliked", line_num);
-            else{
-                // Cast buffer to update, set type & fields (LTS and toggle)
-                like_update = (update *)mess;
-                like_update->type = 1;
-                strcpy(like_update->username, username);
-                strcpy(like_update->chat_room, room_name);
-                payload = (like_payload *)&(like_update->payload);
-                payload->toggle = like;
-                payload->lts = line_itr->lts;
-
-                // Send update to current server
-                ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, &room_group[0], 0, sizeof(update), mess);
-                if(ret < 0){
-                    SP_error(ret);
-                    close_client();
+            // Check that line was not posted by current username
+            if(strcmp(username, line_itr->append_update->username)){
+                // Check for redundant like/unlike TODO: This is not complete. Only checks likes
+                already_liked = false;
+                like_itr = line_itr->likers_list_head.next;
+                while(like_itr != NULL){
+                    payload = (like_payload *)&(like_itr->like_update->payload);
+                    if(!strcmp(like_itr->like_update->username, &username[0]) &&
+                            payload->toggle == like){
+                        already_liked = true;
+                    }
+                    like_itr = like_itr->next;
                 }
-                printf("Setting like status of line %d to %s\n", 
-                    line_num, like ? "true" : "false");
-            }
+                if((already_liked && like) || (!already_liked && !like))
+                    printf("Error: line %d is already %s by this username!\n",
+                        line_num, like ? "liked" : "unliked");
+                else{
+                    // Cast buffer to update, set type & fields (LTS and toggle)
+                    like_update = (update *)mess;
+                    like_update->type = 1;
+                    strcpy(like_update->username, username);
+                    strcpy(like_update->chat_room, room_name);
+                    payload = (like_payload *)&(like_update->payload);
+                    payload->toggle = like;
+                    payload->lts = line_itr->lts;
+
+                    // Send update to current server
+                    ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, &room_group[0], 0, sizeof(update), mess);
+                    if(ret < 0){
+                        SP_error(ret);
+                        close_client();
+                    }
+                    printf("Setting like status of line %d to %s\n", 
+                        line_num, like ? "true" : "false");
+                }
+            }else
+                printf("Error: can't like line posted by current username\n");
         }
     }
-}
-
-/* Request history TODO: Implement*/
-void request_history(){
-    // Local vars
-
-    // Send history request message to server
-
-    // Clear everything
-    
-    // Set flag indicating NOT to remove old messages
-    
-    // TODO: implement logic in other functions to not clear if flag set
-    
-    // TODO: after end of history is received (special update?), clear flag
-    
-    // Immediately return to normal behavior???
-}
-
-/* Display current (Spread) view */
-void display_view(){
-    // TODO: Implement
-
-    // Should the client request it from the server, or should the server
-    // always keep the client up-to-date with the view status?
 }
 
 /* Send local username to server */
@@ -717,9 +703,48 @@ void send_username_update(){
             SP_error(ret);
             close_client();
         }
-        username_set = true;
+        username_sent = true;
         printf("Sending username update\n");
     }
+}
+
+/* Request current Spread/server view */
+void request_view(){
+    // Local vars
+    update *view_request;
+
+    // Create view request update
+    view_request = (update *)mess;
+    view_request->type = 4;
+    strcpy(view_request->username, username);
+    strcpy(view_request->chat_room, room_name);
+    // No payload for this message type
+
+    // Send to server
+    ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, &room_group[0], 0, sizeof(update), mess);
+    if(ret < 0){
+        SP_error(ret);
+        close_client();
+    }
+}
+
+/* Request history TODO: Implement*/
+void request_history(){
+    // Local vars
+    //update *history_request;
+
+    // Send history request message to server
+    //history_request = (update *)mess;
+
+    // Clear everything
+    
+    // Set flag indicating NOT to remove old messages
+    
+    // TODO: implement logic in other functions to not clear if flag set
+    
+    // TODO: after end of history is received (special update?), clear flag
+    
+    // Immediately return to normal behavior???
 }
 
 /* Update room display */
