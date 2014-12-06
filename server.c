@@ -178,6 +178,7 @@ void handle_append_update(update *new_update) {
     int should_send_to_client = 1;
     // TODO:*****check if room_node is NULL. then the chat room DNE
     if (room_node == NULL) {
+        if (DEBUG) printf("no room found for %s\n", new_update->chat_room);
         should_send_to_client = 0;
         room_node = append_chat_room_node(new_update->chat_room);
     }
@@ -191,7 +192,7 @@ void handle_append_update(update *new_update) {
     }
     if (line_list_itr->next == NULL 
             || compare_lts(new_update->lts, line_list_itr->next->lts) != 0) {
-        /* The line does not exist yet. */
+        if(DEBUG) printf("/* The line does not exist yet. */\n");
         line_node_already_existed = 0;
         line_node *tmp;
        
@@ -212,6 +213,7 @@ void handle_append_update(update *new_update) {
     }
     if (compare_lts(new_update->lts, line_list_itr->next->lts) == 0
                 && line_list_itr->next->append_update == NULL) {
+        if (DEBUG) printf("/* line_node exists now, has same lts */\n");
         line_node *tmp = line_list_itr->next;
         if (tmp->next == NULL) {
             room_node->lines_list_tail = tmp;
