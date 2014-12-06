@@ -905,7 +905,8 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
                         update_itr = (update *)&serv_msg_buff;
                         num_updates_itr = 0;
                     }
-                } 
+                }
+                client_itr = client_itr->next; 
             }
         } 
     }
@@ -961,8 +962,10 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
                             num_updates_itr = 0;
                         }
                     }
+                    liker_itr = liker_itr->next;
                 }
             }    
+            line_itr = line_itr->next;
         }
         /* if the bundle has updates to be sent, send the bundle */
         if (num_updates_itr > 0) {
