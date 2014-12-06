@@ -826,6 +826,7 @@ void handle_client_username(update *client_update, char *sender) {
     }
     update *new_update = (update *)&serv_msg_buff;
     memcpy(new_update, client_update, sizeof(update));
+    strcpy(((join_payload *)&new_update->payload)->client_name, sender);
     new_update->type = 2;
     new_update->lts.server_id = process_index;
     /* set join update to a leave.*/
