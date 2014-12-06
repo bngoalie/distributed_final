@@ -149,4 +149,7 @@ void get_room_group(int server_id, char *room_name, char *room_group);
 /* Get Spread group for a server lobby */
 void get_lobby_group(int server_id, char *group);
 
+/* Return 0 if equal */
+int check_name_server_equal(char *server_name, char *spread_name);
+
 #endif
