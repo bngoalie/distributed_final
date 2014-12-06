@@ -255,11 +255,11 @@ void process_append(update *append_update){
 /* Process like update from server TODO: DOUBLE CHECK THIS LOGIC PLEASE */
 void process_like(update *like_update){
     // Local vars
-    like_payload *payload;
-    line_node *line_itr;
-    liker_node *liker_itr;
-    liker_node *tmp;
-    bool line_found;
+    like_payload    *payload;
+    line_node       *line_itr;
+    liker_node      *liker_itr;
+    liker_node      *tmp;
+    bool            line_found;
 
     // Cast payload to like payload
     payload = (like_payload *)&(like_update->payload);
@@ -314,10 +314,10 @@ void process_like(update *like_update){
 /* Process join update from server */
 void process_join(update *join_update){
     // Local vars
-    join_payload *payload;    
-    client_node *tmp;
-    client_node *user_itr;
-    bool removed;
+    join_payload    *payload;    
+    client_node     *tmp;
+    client_node     *user_itr;
+    bool            removed;
 
     // Cast payload to join payload
     payload = (join_payload*)&(join_update->payload);
@@ -358,14 +358,12 @@ void process_join(update *join_update){
 /* Connect to server with given server_id */
 void connect_to_server(int new_id){
     // Local vars
-    int     temp_id;
-    int     ret;
-    mailbox mbox_temp;
-    sp_time timeout;
-    timeout.sec = 0;
-    timeout.usec = 500000;
-    char prev_room[MAX_ROOM_NAME_LENGTH];
-    const char *daemons[5] = {DAEMON1, DAEMON2, DAEMON3, DAEMON4, DAEMON5}; 
+    int         temp_id;
+    int         ret;
+    mailbox     mbox_temp;
+    sp_time     timeout;
+    char        prev_room[MAX_ROOM_NAME_LENGTH];
+    const char  *daemons[5] = {DAEMON1, DAEMON2, DAEMON3, DAEMON4, DAEMON5}; 
     
     // Store current mailbox if already connected TODO: verify this will work 
     if(connected)
@@ -381,6 +379,8 @@ void connect_to_server(int new_id){
         E_exit_events();
         E_init();       
         // Connect to Spread daemon
+        timeout.sec = 0;
+        timeout.usec = 500000;
         printf("Connecting to server %d...\n", new_id+1);
         ret = SP_connect_timeout(daemons[new_id], NULL, 0, 1,
             &mbox, private_group, timeout);
@@ -587,9 +587,9 @@ void change_username(char *new_username){
 /* Append new line to current chat room */
 void append_line(char *new_line){
     // Local vars
-    update *append;
-    char lobby[MAX_ROOM_NAME_LENGTH];
-    int ret;
+    update  *append;
+    char    lobby[MAX_ROOM_NAME_LENGTH];
+    int     ret;
     // Confirm client is connected and in chat room (not a lobby)
     get_lobby_group(server_id, lobby);
     if(!connected || strcmp(room_group, lobby) == 0){
@@ -615,13 +615,13 @@ void append_line(char *new_line){
 /* Set like status for line number */
 void like_line(int line_num, bool like){ 
     // Local vars
-    update *like_update;
-    like_payload *payload;
-    line_node *line_itr;
-    liker_node *like_itr;
-    bool already_liked;
-    char lobby[MAX_ROOM_NAME_LENGTH];
-    int ret;
+    update          *like_update;
+    like_payload    *payload;
+    line_node       *line_itr;
+    liker_node      *like_itr;
+    bool            already_liked;
+    char            lobby[MAX_ROOM_NAME_LENGTH];
+    int             ret;
 
     // Check if connected and in chat room
     get_lobby_group(server_id, lobby);
@@ -685,8 +685,8 @@ void like_line(int line_num, bool like){
 /* Send local username to server */
 void send_username_update(){
     // Local vars
-    update *username_update;
-    int ret;    
+    update  *username_update;
+    int     ret;    
 
     if(!connected)
         printf("Error: attempting to send username update when disconnected\n");
@@ -711,8 +711,8 @@ void send_username_update(){
 /* Request current Spread/server view */
 void request_view(){
     // Local vars
-    update *view_request;
-    int ret;
+    update  *view_request;
+    int     ret;
 
     // Create view request update
     view_request = (update *)mess;
@@ -751,10 +751,10 @@ void request_history(){
 /* Update room display */
 void update_display(){
     // Local vars
-    client_node *user_itr;
-    line_node *line_itr;
-    liker_node *like_itr;
-    int likes, line_num;
+    client_node     *user_itr;
+    line_node       *line_itr;
+    liker_node      *like_itr;
+    int             likes, line_num;
 
     // Clear screen:
     system("clear");
@@ -799,10 +799,10 @@ void update_display(){
 /* Clear lines data structure */
 void clear_lines(){
     // Local vars
-    line_node *line_itr;
-    line_node *tmp;
-    liker_node *like_itr;
-    liker_node *tmp2;
+    line_node   *line_itr;
+    line_node   *tmp;
+    liker_node  *like_itr;
+    liker_node  *tmp2;
 
     // Iterate through lines, free
     line_itr = lines_list_head.next;
