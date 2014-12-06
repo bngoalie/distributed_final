@@ -728,7 +728,7 @@ void handle_client_message(update *client_update, char *sender) {
             }
             break;
         case 3:
-            /* TODO: processes username update*/
+            /* processes username update*/
             handle_client_username(client_update, sender);
             break;
         case 4:
@@ -737,6 +737,7 @@ void handle_client_message(update *client_update, char *sender) {
             break;
         case 5:
             /* TODO: processes history update*/
+            handle_client_history(client_update, sender);
             break;
         default:
            break; 
@@ -886,7 +887,9 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
             client_itr = (target_room->client_heads[idx]).next;
             /* Loop through clients in our partition, send join updates. */
             while(client_itr != NULL) {
-                if (client_itr->join_update != NULL) {
+                if (client_itr->join_update != NULL 
+                    && strcmp(((join_payload *)&client_itr->join_update->payload)->client_name, 
+                              client_name) != 0) {
                     /* add this join update to the bundle of updates to send.*/ 
                     memcpy(update_itr, client_itr->join_update, sizeof(update));
                     /* TODO: currently could iterate one byes past end of buff. */
@@ -982,6 +985,9 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
 
 }
 
+void handle_client_history(update *client_update, char *client_name) {
+
+}
 
 static void	Read_message() {
     /* Local vars */
