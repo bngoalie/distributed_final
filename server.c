@@ -660,8 +660,8 @@ void handle_lobby_client_leave(char *client_name, int notify_option,
                 || (client_itr->next->join_update->lts).server_id == process_index 
                 || (client_itr->next->join_update->lts).server_id != server_id
                 || strcmp(client_itr->next->join_update->username, 
-                          leave_update->username) != 0)
-                || strcmp(client_itr->next->join_update->chat_room, leave_update->chat_room) != 0) {
+                          leave_update->username) != 0
+                || strcmp(client_itr->next->join_update->chat_room, leave_update->chat_room) != 0)) {
         client_itr = client_itr->next;
     }
     if (client_itr->next == NULL) {
