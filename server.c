@@ -704,6 +704,9 @@ void handle_lobby_client_leave(char *client_name, int notify_option,
          * list of updates */
         free(client_to_remove);
     }
+    if (DEBUG) {
+        printf("succesfully exited handle_lobby_client_leave \n");
+    }
 }
 
 void handle_room_client_leave(update *leave_update, char *client_name, int notify_option) {
@@ -751,6 +754,9 @@ void handle_room_client_leave(update *leave_update, char *client_name, int notif
             SP_error(ret);
             Bye();
         }
+    }
+    if (DEBUG) {
+        printf("succesfully exited handle_room_client_leave \n");
     }
 }
 
