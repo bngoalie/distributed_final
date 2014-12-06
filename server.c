@@ -374,6 +374,7 @@ room_node * append_chat_room_node(char *chat_room) {
     } 
 
     new_room->next = NULL;
+    new_room->lines_list_head.next = NULL;
     new_room->lines_list_tail = NULL;
     room_list_tail->next = new_room;
     room_list_tail = new_room;
@@ -514,6 +515,9 @@ void handle_client_message(update *client_update, int mess_size, char *sender) {
         case 2:
             /* processes join update*/
             handle_join_update(client_update, sender, 2);
+            if (((join_payload *)&client_update->payload)->toggle == 1) {
+                send_current_state_to_client(sender, client_update->chat_room);
+            }
             break;
         case 3:
             /* TODO: processes username update*/
@@ -585,14 +589,16 @@ void handle_lobby_client_join(char *client_name, int server_id,
     client_node *lobby_client_node = NULL;
     client_node *tmp_node = NULL;
     client_node *client_itr = &(room_list_head.client_heads[server_id]);
-    /* Find in lobby */
+    if(DEBUG) printf("/* Find in lobby */\n");
     while (client_itr->next != NULL
         && strcmp(client_itr->next->client_group, client_name) != 0) {
         client_itr = client_itr->next;
     }
     lobby_client_node = client_itr->next;
-    /* Insert into lobby if not in lobby*/
+
     if (lobby_client_node == NULL) {
+    if (DEBUG) printf("/* Insert into lobby if not in lobby*/\n");
+
         if ((tmp_node = malloc(sizeof(client_node))) == NULL) {
             perror("error mallocing new client node\n");
             Bye();   
@@ -608,6 +614,7 @@ void handle_lobby_client_join(char *client_name, int server_id,
 
     client_node *client_node_to_insert = NULL;
     if (join_update != NULL && join_update->chat_room[0] != 0) {
+        if (DEBUG) printf("/* See if there is a join update for a chat room */\n");
         if (DEBUG) printf("there is a join_update, and it's chat room is non-null\n");
         if (lobby_client_node->join_update != NULL 
             && lobby_client_node->join_update->chat_room[0] != 0) {
@@ -810,6 +817,12 @@ void handle_client_username(update *client_update, char *sender) {
     }
     handle_lobby_client_join(sender, process_index, new_update, notify_option);
 }
+
+void send_current_state_to_client(char *client_name, char *chat_room) {
+    
+    
+}
+
 
 static void	Read_message() {
     /* Local vars */
