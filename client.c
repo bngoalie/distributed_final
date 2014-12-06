@@ -50,6 +50,7 @@ int main(){
     num_lines = 0;
     server_id = -1;
     lines_list_tail = NULL;
+    client_list_head.next = NULL;
     if((mess = malloc(sizeof(server_client_mess))) == NULL){
         printf("Failed to malloc message buffer\n");
         close_client();
@@ -134,32 +135,36 @@ void parse_update(){
     {
         SP_error(ret);
         if(ret == -8)
+            // Spread daemon crash - treat as full disconnect!
             printf("Disconnected from Spread daemon. Please try connecting to another server.\n");
             clear_lines();
             clear_users();
             connected = 0;
             server_id = -1;
+            room_name[0] = 0;
+            room_group[0] = 0;
         close_client();
     }
 
     // Process based on type
     if(Is_regular_mess(service_type)){
+        // Unpack update(s)
         new_update = ((update *)(((server_client_mess *)mess)->payload));
         for(unsigned int i = 0; i < (ret/sizeof(update)); i++){
             if(DEBUG)
                 printf("Received update of type %d from server for username %s and room %s\n",
                     new_update->type, new_update->username, new_update->chat_room);
             switch(new_update->type){
-                case 0:
+                case 0: // Append
                     process_append(new_update);
                     break;
-                case 1:
+                case 1: // Like
                     process_like(new_update);
                     break;
-                case 2:
+                case 2: // Join
                     process_join(new_update);
                     break; 
-                case 4: // 3 not handled by client
+                case 4: // View (type 3 not handled by client)
                     display_view = true;
                     process_view(new_update);
                     break;
@@ -196,6 +201,7 @@ void parse_update(){
                     get_lobby_group(server_id, lobby);
                     SP_leave(mbox, lobby);
                     server_id = -1;
+                    room
                 } 
             }else if(Is_caused_network_mess(service_type)){
                 // TODO: Check for client/server partition?
@@ -610,16 +616,22 @@ void join_chat_room(char *new_room, bool is_group_name){
 
 /* Change username */
 void change_username(char *new_username){
-    // Verify new name actually is new
-    if(strcmp(&username[0], new_username)){
-        // Set local username
-        strcpy(username, new_username);
-        // If connected, send new username to server
-        if(connected)
-            send_username_update();
-        printf("Set username to %s\n", new_username);
-    }else{
-        printf("Error: username is already %s\n", &username[0]);
+    // Very username length is below maximum
+    if(strlen(new_username) >= MAX_USERNAME_LENGTH)
+        printf("Error: Username is too long. Must be less than %d characters\n",
+            MAX_USERNAME_LENGTH);
+    else{
+        // Verify new name actually is new
+        if(strcmp(username, new_username)){
+            // Set local username
+            strcpy(username, new_username);
+            // If connected, send new username to server
+            if(connected)
+                send_username_update();
+            printf("Set username to %s\n", new_username);
+        }else{
+            printf("Error: username is already set to %s\n", username);
+        }
     }
 }
 
