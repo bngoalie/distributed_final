@@ -320,6 +320,123 @@ void handle_like_update(update *new_update) {
     }
 }
 
+/* This function assumes new update already stored */
+void handle_server_join_update(update *join_update) {
+    int server_id = (join_update->lts).server_id;
+    int toggle = ((join_payload *)&(join_update->payload))->toggle;
+    char *client_name =  ((join_payload *)&(join_update->payload))->client_name;
+    char *chat_room = join_update->chat_room;
+    client_node *tmp_node = NULL;
+    
+    /* Get client node in lobby if exists. If doesn't exist, create it*/
+    client_node *lobby_client_node = NULL;
+    client_node *lobby_client_node_prev = NULL;
+    client_node *client_itr = &(room_list_head.client_heads[server_id]);
+    if(DEBUG) printf("/* Find in lobby */\n");
+    while (client_itr->next != NULL
+        && strcmp(client_itr->next->client_group, client_name) != 0) {
+        client_itr = client_itr->next;
+    }
+    lobby_client_node = client_itr->next;
+    lobby_client_node_prev = client_itr;
+    
+    if (lobby_client_node == NULL) {
+        if (DEBUG) printf("/* Insert into lobby if not in lobby*/\n");
+        if (toggle == 1) {
+            if ((tmp_node = malloc(sizeof(client_node))) == NULL) {
+                perror("error mallocing new client node\n");
+                Bye();   
+            }
+            tmp_node->next = client_itr->next;
+            client_itr->next = tmp_node;
+            tmp_node->join_update = NULL;
+            /* TODO: this currently would include the #'s, which would include the
+             * machine name. Do we care? */
+            strcpy(tmp_node->client_group, client_name);
+            lobby_client_node = tmp_node;
+        } else {
+            perror("trying to process leave update for a client we don't know about\n");
+            Bye();
+        }
+    } 
+    
+    /* Find possibly already existing client_node to move/delete*/
+    client_node *client_node_to_change = NULL;
+    if (lobby_client_node->join_update != NULL 
+        && lobby_client_node->join_update->chat_room[0] != 0) {
+        /* The client node in lobby knows of an already existing join update. 
+         * Find the chat room, point to this node.  */
+        room_node *prev_chat_room = 
+            get_chat_room_node(lobby_client_node->join_update->chat_room);
+        if (prev_chat_room == NULL) {
+            perror("stored update claimed the existance of a room could not find\n");
+            Bye();
+        } 
+        client_node *client_itr = &(prev_chat_room->client_heads[server_id]);
+        if(DEBUG) printf("/* Find in orev chat room */\n");
+        while (client_itr->next != NULL
+            && strcmp(client_itr->next->client_group, client_name) != 0) {
+            client_itr = client_itr->next;
+        }  
+        if (client_itr->next == NULL) {
+            perror("update claimed client stored in chat room but couldn't find client\n");
+            Bye();
+        }
+        client_node_to_change = client_itr->next;
+        client_itr->next = client_node_to_change->next;
+        if (toggle == 0) { 
+            if (DEBUG) printf("we found the client node to remove\n");
+            free(client_node_to_change);
+            if (server_id != process_index) {
+                lobby_client_node_prev->next = lobby_client_node->next;
+                free(lobby_client_node); 
+            } else {
+                lobby_client_node->join_update = NULL;
+            }
+            /* We have removed the nodes from chat room, 
+             * and lobby (or set lobby join update to null if own client)*/
+        } 
+       // client_node_removal_itr = client_itr;
+    } else if (toggle == 1) {
+        /* lobby node does not know if client in existant chat room. 
+         * Create client node to insert.*/
+        if ((client_node_to_change = malloc(sizeof(client_node))) == NULL) {
+            perror("malloc error for new client node\n");
+            Bye();
+        }
+        client_node_to_change->next = NULL;
+        strcpy(client_node_to_change->client_group, client_name);
+    } else {
+        perror("for a leave update, no client found in lobby, so unkown\n");
+        Bye();   
+    }
+    if (toggle == 1) {
+        /* Find chat_room node */
+        room_node *target_chat_room = get_chat_room_node(chat_room);
+        /* If chat room to join doesn't exist, create it. */
+        if (target_chat_room == NULL) {
+            target_chat_room = append_chat_room_node(chat_room);
+        }
+        
+        client_itr = &(target_chat_room->client_heads[server_id]);
+        client_node_to_change->next = client_itr->next;
+        client_itr->next = client_node_to_change;
+        client_node_to_change->join_update = join_update;
+        strcpy(client_node_to_change->client_group, client_name);
+        lobby_client_node->join_update = join_update;
+    }
+
+    update *update_payload = (update *)(server_client_mess_buff.payload);
+    memcpy(update_payload, join_update, sizeof(update));
+    char chat_room_group[MAX_GROUP_NAME];
+    get_room_group(process_index, chat_room, chat_room_group);
+    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), chat_room_group, 0, sizeof(update), (char *) &server_client_mess_buff);
+    if(ret < 0) {
+        SP_error(ret);
+        Bye();
+    }    
+}
+
 void handle_join_update(update *join_update, char *client_spread_group, 
                         int notify_option) {
     int server_id = (join_update->lts).server_id;
