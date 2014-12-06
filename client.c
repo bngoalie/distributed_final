@@ -93,10 +93,10 @@ void parse_input(){
             like_line(atoi((char *)&input[2]), false);
             break;
         case 'h':   // Display history
-           request_history(); 
+            request_history(); 
             break;
         case 'v':   // Display view
-            // TODO: Define function for displaying current view
+            request_view();
             break;
         case 'q':   // Quit 
             close_client();        
@@ -118,6 +118,7 @@ void parse_update(){
     char    server[MAX_USERNAME_LENGTH];
     char    sender[MAX_GROUP_NAME];
     char    target_groups[MAX_GROUPS][MAX_GROUP_NAME];
+    bool    display_view;
     int     num_groups;
     int     service_type;
     int16   mess_type;
@@ -125,6 +126,7 @@ void parse_update(){
     int     ret;
 
     // Receive message   
+    display_view = false;
     service_type = 0;
     ret = SP_receive(mbox, &service_type, sender, MAX_GROUPS, &num_groups, target_groups,
         &mess_type, &endian_mismatch, sizeof(server_client_mess), mess);
@@ -156,6 +158,10 @@ void parse_update(){
                     break;
                 case 2:
                     process_join(new_update);
+                    break; 
+                case 4: // 3 not handled by client
+                    display_view = true;
+                    process_view(new_update);
                     break;
                 default:
                     printf("Error: received unknown update type!\n");
@@ -164,7 +170,8 @@ void parse_update(){
             new_update++;
         }
         // Refresh Display
-        update_display();
+        if(!display_view)
+            update_display();
 
     }else if(Is_membership_mess(service_type)){
         // Handle membership changes
@@ -263,6 +270,7 @@ void process_append(update *append_update){
             }
             // Free line node itself
             free(tmp);
+            num_lines--;
         }        
     }
 }
@@ -283,7 +291,7 @@ void process_like(update *like_update){
         printf("Toggle value: %s\n", payload->toggle == 1 ? "like" : "unlike");
 
     // Find relevant line (if exists) via LTS
-    line_itr = lines_list_tail->prev; // iterator starts at oldest message
+    line_itr = lines_list_tail; // iterator starts at oldest message
     line_found = false;
     while(line_itr != NULL && !line_found){ 
         if(!compare_lts(line_itr->lts, payload->lts)) 
@@ -375,6 +383,11 @@ void process_join(update *join_update){
             }
         }
     }
+}
+
+/* Process & display view update */
+void process_view(update *view_update){
+
 }
 
 /* Connect to server with given server_id */
@@ -672,11 +685,12 @@ void like_line(int line_num, bool like){
                 // Check for redundant like/unlike
                 already_liked = false;
                 like_itr = line_itr->likers_list_head.next;
+                // Iterate through likes
                 while(like_itr != NULL){
                     payload = (like_payload *)&(like_itr->like_update->payload);
                     if(!strcmp(like_itr->like_update->username, username) &&
-                            payload->toggle == like){
-                        already_liked = true;
+                            payload->toggle == true){
+                        already_liked = true; // Mark if user already liked line
                     }
                     like_itr = like_itr->next;
                 }
@@ -706,7 +720,6 @@ void like_line(int line_num, bool like){
                 printf("Error: can't %s line posted by current username\n", like ? "like" : "unlike");
         }
     }
-    printf("Made it through the like line function\n");
 }
 
 /* Send local username to server */
