@@ -149,7 +149,7 @@ void handle_update(update *new_update, char *private_spread_group) {
                 handle_like_update(new_update_node->update);
                 break;
             case 2:
-                handle_join_update(new_update_node->update, private_spread_group);
+                handle_join_update(new_update_node->update, private_spread_group, 0);
                 break;
             default:
                 perror("unexpected update type\n");
@@ -302,17 +302,16 @@ void handle_like_update(update *new_update) {
     }
 }
 
-void handle_join_update(update *join_update, char *client_spread_group) {
-    room_node *room_node = get_chat_room_node(join_update->chat_room);
-    if (room_node == NULL) {
-        room_node = append_chat_room_node(join_update->chat_room);
-    }
+void handle_join_update(update *join_update, char *client_spread_group, 
+                        int notify_option) {
     int server_id = (join_update->lts).server_id;
     int toggle = ((join_payload *)&(join_update->payload))->toggle;
     if (toggle == 0) {
-        handle_lobby_client_leave(client_spread_group, 0, join_update, server_id); 
+        handle_lobby_client_leave(client_spread_group, notify_option, 
+                                  join_update, server_id); 
     } else if (toggle == 1) {
-        handle_lobby_client_join(client_spread_group, server_id, join_update, 0); 
+        handle_lobby_client_join(client_spread_group, server_id, join_update, 
+                                 notify_option); 
     }
 }
 
@@ -479,6 +478,15 @@ void initiate_merge() {
 }
 
 void handle_client_message(update *client_update, int mess_size, char *sender) {
+    /* Check if have client */
+    client_node *client_itr = &(room_list_head.client_heads[process_index]);
+    while (client_itr->next != NULL 
+           && strcmp(client_itr->next->client_group, sender) != 0) {
+        client_itr = client_itr->next;
+    }
+    if (client_itr->next == NULL) {
+        return;
+    }
     int update_type = client_update->type;
     switch (update_type) {
         case 0:
@@ -491,11 +499,11 @@ void handle_client_message(update *client_update, int mess_size, char *sender) {
             break;
         case 2:
             /* processes join update*/
-            handle_join_update(client_update, sender);
+            handle_join_update(client_update, sender, 2);
             break;
         case 3:
             /* TODO: processes username update*/
-
+//            handle_client_username(client_update, sender);
             break;
         case 4:
             /* TODO: processes view update*/
