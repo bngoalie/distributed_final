@@ -153,6 +153,7 @@ void handle_update(update *new_update, char *private_spread_group) {
     /* TODO: We do not want to receive our own updates. 
      * Should enter (update_server_id != process_index) logic here? */
     if ((new_update_node = store_update(new_update)) != NULL) {
+        if (DEBUG) printf("update stored. next need to handle it\n");
         int update_type = new_update->type;
         switch (update_type) {
             case 0:
@@ -395,7 +396,10 @@ room_node * append_chat_room_node(char *chat_room) {
  *  most recent update. given update cannot be NULL */
 update_node * store_update(update *new_update) {
     int update_server_id = (new_update->lts).server_id;
-    
+    if (DEBUG) printf("try store update.\n");
+    if (DEBUG && server_updates_array[update_server_id] != NULL) {
+        printf("update seq: %d, current seq: %d\n", (new_update->lts).server_seq, server_updates_array[update_server_id]->update->lts.server_seq);
+    }
     if (server_updates_array[update_server_id] == NULL 
             || (server_updates_array[update_server_id]->update->lts).server_seq + 1 == (new_update->lts).server_seq) {
         update_node *new_node = NULL;
@@ -428,6 +432,7 @@ void handle_server_update_bundle(server_message *recv_serv_msg,
     update *update_itr = (update *)&(recv_serv_msg->payload);
     int num_updates = message_size/sizeof(update);
     for (int idx = 0; idx < num_updates; idx++) {
+        if(DEBUG) printf("handling update\n");
         handle_update(update_itr, sender);
         update_itr++;
     }
