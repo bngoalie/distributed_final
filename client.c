@@ -11,7 +11,7 @@
  * Task List:
  * - TODO: History request AND receiving/displaying
  * - TODO: View receiving/displaying
- * - TODO: Put most printf statements in ifdef DEFINE blocks
+ * - TODO: Put most printf statements in ifdef DEFINE blocks??
  * - TODO: TEST EVERYTHING
  */
 
@@ -208,6 +208,9 @@ void process_append(update *append_update){
     liker_node  *tmp2;
     int         itr_lines = 0; 
     update      *new_update;
+
+    if(DEBUG)
+        printf("Append message %s\n", (char *)&(append_update->payload));
 
     // Iterate through lines to find insertion point, if one exists
     while(line_list_itr->next != NULL &&
@@ -530,20 +533,7 @@ void join_chat_room(char *new_room, bool is_group_name){
     // Ensure client is connected to a server
     if(connected){
         if(username_sent){
-            // Create join update in buffer
-            join_update = (update *)mess;
-            join_update-> type = 2;
-            strcpy(join_update->username, username);
-            strcpy(join_update->chat_room, new_room);
-            payload = (join_payload *)&(join_update->payload);
-            payload->toggle = 1;
-
-            // Send message
-            ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
-            if(ret < 0){
-                SP_error(ret);
-                close_client();
-            }
+            
      
             // Store current room group
             strcpy(prev_group, room_group);
@@ -573,6 +563,21 @@ void join_chat_room(char *new_room, bool is_group_name){
                 clear_users();
                 strcpy(room_name, new_room);
                 printf("Joined room %s\n", new_room);
+                
+                // Create join update in buffer
+                join_update = (update *)mess;
+                join_update-> type = 2;
+                strcpy(join_update->username, username);
+                strcpy(join_update->chat_room, new_room);
+                payload = (join_payload *)&(join_update->payload);
+                payload->toggle = 1;
+
+                // Send message
+                ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
+                if(ret < 0){
+                    SP_error(ret);
+                    close_client();
+                }
             }
         }else
             printf("Error: must set a username before joining a room\n");
@@ -692,6 +697,7 @@ void like_line(int line_num, bool like){
                 printf("Error: can't like line posted by current username\n");
         }
     }
+    printf("Made it through the like line function\n");
 }
 
 /* Send local username to server */
@@ -766,6 +772,7 @@ void update_display(){
     client_node     *user_itr;
     line_node       *line_itr;
     liker_node      *like_itr;
+    char            buff[MAX_USERNAME_LENGTH+5];
     int             likes, line_num;
 
     // Clear screen:
@@ -790,20 +797,17 @@ void update_display(){
     while(line_itr != NULL && line_itr != &lines_list_head){
         // Increment and print line number
         printf("%6d ", ++line_num);
-        fflush(stdout); 
+        // Print username
+        sprintf(buff, "%%%ds: ", MAX_USERNAME_LENGTH);
+        printf(buff, line_itr->append_update->username); 
         // Print line text
         printf("%-80s ", (char *)&(line_itr->append_update->payload));
-        fflush(stdout); 
         // Calculate number of likes
         like_itr = line_itr->likers_list_head.next;
         likes = 0;
-        if(DEBUG)
-            printf("Just before iterating likes\n");
         // Counter number of likes
         while(like_itr != NULL){
-            printf("Like??\n");
             likes++;
-            printf("LIKE!\n");
             like_itr = like_itr->next;
         }
         // Print number of likes
