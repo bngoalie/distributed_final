@@ -60,3 +60,13 @@ int get_group_num_from_name(char *group_name) {
     int len = strlen(group_name);
     return atoi(&group_name[len-1]);
 }
+
+int check_name_server_equal(char *server_name, char *spread_name) {
+    if (server_name == NULL || spread_name == NULL) {
+        return 1;
+    }
+    char tmp_str[256];
+    strcpy(tmp_str, spread_name);
+    char *token = strtok(tmp_str, "#");
+    return strcmp(token, server_name);
+}
