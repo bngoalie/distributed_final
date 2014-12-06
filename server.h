@@ -77,5 +77,6 @@ void handle_server_join_update(update *join_update);
 void handle_client_join_update(update *join_update, char *client_name);
 void handle_client_join_lobby(char *client_name); 
 void handle_client_leave_lobby(char *client_name);
+void handle_client_history(update *client_update, char *client_name);
 
 #endif
