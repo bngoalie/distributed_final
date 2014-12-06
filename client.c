@@ -68,7 +68,7 @@ void parse_input(){
     // Clear old input, get new input from stdin
     for(unsigned int i=0; i < sizeof(input); i++) 
         input[i] = 0;
-    if(fgets(input, 130, stdin) == NULL)
+    if(fgets(input, 82, stdin) == NULL)
         close_client();
     strtok(input, "\n"); // remove newline 
 
@@ -110,6 +110,7 @@ void parse_input(){
 
 /* Parse update from server */       // TODO: HANDLE RECEIVING AND DISPLAYING VIEW!!
 void parse_update(){
+    // Local vars
     membership_info memb_info;
     update  *new_update;
     char    *member;
@@ -278,6 +279,9 @@ void process_like(update *like_update){
     // Cast payload to like payload
     payload = (like_payload *)&(like_update->payload);
 
+    if(DEBUG)
+        printf("Toggle value: %s\n", payload->toggle == 1 ? "like" : "unlike");
+
     // Find relevant line (if exists) via LTS
     line_itr = lines_list_tail->prev; // iterator starts at oldest message
     line_found = false;
@@ -298,13 +302,14 @@ void process_like(update *like_update){
                 close_client();
             }
             tmp->next = line_itr->likers_list_head.next;
+
             line_itr->likers_list_head.next = tmp;
             // Malloc and set fields 
             if((tmp->like_update = malloc(sizeof(update))) == NULL){
                 printf("Error: failed to malloc like update\n");
                 close_client();
             }
-            memcpy(&(tmp->like_update), like_update, sizeof(update));
+            memcpy((tmp->like_update), like_update, sizeof(update)); 
         }else{
             // If like toggle is 0, find username and remove node from list
             // Iterate through likers list
@@ -335,6 +340,9 @@ void process_join(update *join_update){
 
     // Cast payload to join payload
     payload = (join_payload*)&(join_update->payload);
+
+    if(DEBUG)
+        printf("Toggle value: %s\n", payload->toggle ? "join" : "leave");
 
     // Process according to state change
     if(payload->toggle == 1){
@@ -523,7 +531,8 @@ void check_for_server(){
 }
 
 /* Join chat room with given new_room */
-void join_chat_room(char *new_room, bool is_group_name){ 
+void join_chat_room(char *new_room, bool is_group_name){
+    // Local vars
     update          *join_update;
     join_payload    *payload;
     int             ret;    
@@ -549,8 +558,8 @@ void join_chat_room(char *new_room, bool is_group_name){
             if(ret != 0){
                 // Unsuccessful, revert to previous group
                 SP_error(ret);
+                printf("Error: unable to join group %s - try to avoid special chars and spaces\n", new_room);
                 strcpy(room_group, prev_group);
-                printf("Error: unable to join group %s\n", room_group);
             }else{
                 // Successful, leave previous group
                 get_lobby_group(server_id, lobby);
@@ -694,7 +703,7 @@ void like_line(int line_num, bool like){
                         line_num, like ? "true" : "false");
                 }
             }else
-                printf("Error: can't like line posted by current username\n");
+                printf("Error: can't %s line posted by current username\n", like ? "like" : "unlike");
         }
     }
     printf("Made it through the like line function\n");
@@ -779,8 +788,9 @@ void update_display(){
     system("clear");
 
     // Print room and users:
+    printf("User: %s\n", username);
     printf("Room: %s\n", room_name);
-    printf("Users: ");
+    printf("Attendees: ");
     user_itr = client_list_head.next;
     while(user_itr != NULL){
         printf("%s", user_itr->join_update->username);
@@ -797,11 +807,14 @@ void update_display(){
     while(line_itr != NULL && line_itr != &lines_list_head){
         // Increment and print line number
         printf("%6d ", ++line_num);
+        fflush(stdout); 
         // Print username
         sprintf(buff, "%%%ds: ", MAX_USERNAME_LENGTH);
         printf(buff, line_itr->append_update->username); 
+        fflush(stdout); 
         // Print line text
         printf("%-80s ", (char *)&(line_itr->append_update->payload));
+        fflush(stdout); 
         // Calculate number of likes
         like_itr = line_itr->likers_list_head.next;
         likes = 0;
@@ -816,7 +829,6 @@ void update_display(){
         else
             printf("\n");
         line_itr = line_itr->prev;
-
     }
     printf("\n");
     fflush(stdout); 
