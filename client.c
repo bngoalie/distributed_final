@@ -10,6 +10,7 @@
 /*
  * Task List:
  * - TODO: Handle membership messages
+ * - TODO: Finish redundant like/unlike checking
  * - TODO: History request
  * - TODO: View request
  * - TODO: Verify mailbox revert functionality
@@ -111,6 +112,8 @@ void parse_input(){
 void parse_update(){
     membership_info memb_info;
     update  *new_update;
+    char    *member;
+    char    server[MAX_USERNAME_LENGTH];
     char    sender[MAX_GROUP_NAME];
     char    target_groups[MAX_GROUPS][MAX_GROUP_NAME];
     int     num_groups;
@@ -165,7 +168,13 @@ void parse_update(){
         }else if(Is_reg_memb_mess(service_type)){
             if(Is_caused_disconnect_mess(service_type)){
                 // Check for server disconnect
-                printf("Disconnect of member %s\n", memb_info.changed_member); 
+                printf("Disconnect of member %s\n", memb_info.changed_member);
+                member = strtok(memb_info.changed_member, "#");
+                get_single_server_group(server_id, server);
+                if(!strcmp(member, server)){
+                    printf("Lost connection with server %d\n", server_id+1);
+                    // TODO: Handle disconnect logic
+                } 
             }else if(Is_caused_network_mess(service_type)){
                 // TODO: Check for client/server partition
                 
@@ -372,11 +381,12 @@ void connect_to_server(int new_id){
             &mbox, private_group, timeout);
         if(ret != ACCEPT_SESSION){
             // If unable to connect to daemon, indicate failure
+            printf("Error: unable to connect to daemon for server %d\n", new_id+1);
             if(connected){ // if previously connected, revert
                 mbox = mbox_temp; 
                 E_attach_fd(mbox, READ_FD, parse_update, 0, NULL, HIGH_PRIORITY);
+                printf("Reverting to server %d\n", server_id+1);
             }
-            printf("Error: unable to connect to daemon for server %d\n", new_id+1);
         }else{
             // If successful, join lobby group
             strcpy(&prev_room[0], &room_group[0]);
@@ -385,12 +395,13 @@ void connect_to_server(int new_id){
             if(ret != 0){
                 // If unable to join lobby, indicate failure
                 SP_error(ret);
+                printf("Error: unable to join lobby group for server %d\n", new_id+1);
                 if(connected){ // if previously connected, revert
                     mbox = mbox_temp;
                     E_attach_fd(mbox, READ_FD, parse_update, 0, NULL, HIGH_PRIORITY);
                     strcpy(&room_group[0], &prev_room[0]);
+                    printf("Reverting to server %d\n", server_id+1);
                 }
-                printf("Error: unable to join lobby group for server %d\n", new_id+1);
             }else{
                 // Indicate success and store previous id
                 printf("Successfully joined group %s\n", &room_group[0]);
@@ -625,7 +636,7 @@ void like_line(int line_num, bool like){
                     printf("Error: hit null node while iterating lines - this shouldn't happen\n");
             }
             
-            // Check for redundant like/unlike
+            // Check for redundant like/unlike TODO: This is not complete. Only checks likes
             redundant = false;
             like_itr = line_itr->likers_list_head.next;
             while(like_itr != NULL){
