@@ -58,13 +58,13 @@ void handle_append_update(update *new_update);
 room_node * append_chat_room_node(char *chat_room);
 client_node * add_client_to_list_if_relevant(client_node *client_list_head, 
                                                 char *group, update *join_update); 
-void handle_update(update *new_update, char *private_spread_group);
+void handle_update(update *new_update);
 update_node * store_update(update *update);
 void handle_server_update_bundle(server_message *recv_serv_msg, 
-                                    int message_size, char *sender); 
+                                    int message_size); 
 void handle_leave_of_server(int left_server_index);
 void initiate_merge();
-void handle_client_message(update *client_update, int mess_size, char *sender);
+void handle_client_message(update *client_update, char *sender);
 void handle_client_append(update *client_update); 
 void send_server_message(server_message *msg_to_send, int size_of_message); 
 int should_choose_new_server(int current_max_seq, int new_max_seq, 

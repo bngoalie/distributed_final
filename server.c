@@ -148,7 +148,7 @@ int main(int argc, char *argv[]) {
     E_handle_events();
 }
 
-void handle_update(update *new_update, char *private_spread_group) {
+void handle_update(update *new_update) {
     update_node *new_update_node = NULL;
     /* TODO: We do not want to receive our own updates. 
      * Should enter (update_server_id != process_index) logic here? */
@@ -627,12 +627,12 @@ update_node * store_update(update *new_update) {
 }
 
 void handle_server_update_bundle(server_message *recv_serv_msg, 
-                                    int message_size, char *sender) {
+                                    int message_size) {
     update *update_itr = (update *)&(recv_serv_msg->payload);
     int num_updates = message_size/sizeof(update);
     for (int idx = 0; idx < num_updates; idx++) {
         if(DEBUG) printf("handling update\n");
-        handle_update(update_itr, sender);
+        handle_update(update_itr);
         update_itr++;
     }
     return;
@@ -699,7 +699,7 @@ void initiate_merge() {
     }
 }
 
-void handle_client_message(update *client_update, int mess_size, char *sender) {
+void handle_client_message(update *client_update, char *sender) {
     /* Check if have client */
     client_node *client_itr = &(room_list_head.client_heads[process_index]);
     while (client_itr->next != NULL 
@@ -759,7 +759,7 @@ void handle_client_append(update *client_update) {
     }
 
     /* Apply the update */
-    handle_update(new_update, Private_group);
+    handle_update(new_update);
 
     /* send set server_message to server group */
     send_server_message(&serv_msg_buff, sizeof(update));
@@ -777,7 +777,7 @@ void handle_client_like(update *client_update) {
     (new_update->lts).server_id = process_index;
 
     /* Apply the update */
-    handle_update(new_update, Private_group);
+    handle_update(new_update);
 
     /* send set server_message to server group */
     send_server_message(&serv_msg_buff, sizeof(update));
@@ -869,8 +869,114 @@ void handle_client_username(update *client_update, char *sender) {
 }
 
 void send_current_state_to_client(char *client_name, char *chat_room) {
+    room_node *target_room = NULL;
+    if ((target_room = get_chat_room_node(chat_room)) == NULL ) {
+        perror("can't send state of non-existant room\n");
+        Bye();
+    }
     
-    
+    int upper_bound_updates_per_message = sizeof(server_client_mess)/sizeof(update);
+    update *update_itr = (update *)&serv_msg_buff;    
+    int     num_updates_itr = 0;
+
+    client_node *client_itr = NULL;
+    for (int idx = 0; idx < MAX_MEMBERS; idx++) {
+        if (server_status[idx] == 1) {
+            /*if the list of clients is from a server in our partition.*/
+            client_itr = (target_room->client_heads[idx]).next;
+            /* Loop through clients in our partition, send join updates. */
+            while(client_itr != NULL) {
+                if (client_itr->join_update != NULL) {
+                    /* add this join update to the bundle of updates to send.*/ 
+                    memcpy(update_itr, client_itr->join_update, sizeof(update));
+                    /* TODO: currently could iterate one byes past end of buff. */
+                    update_itr++;
+                    if (++num_updates_itr == upper_bound_updates_per_message) {
+                        /* buffer is full, send it*/
+                        int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+                                               client_name, 0, 
+                                               num_updates_itr*sizeof(update),
+                                               (char *) &serv_msg_buff);
+                        if(ret < 0) {
+                            SP_error(ret);
+                            Bye();
+                        }
+                        /* reset bundle*/
+                        update_itr = (update *)&serv_msg_buff;
+                        num_updates_itr = 0;
+                    }
+                } 
+            }
+        } 
+    }
+    /*only sending last 25 messages*/
+    line_node *line_itr = target_room->lines_list_tail; 
+    if (line_itr != NULL) {
+        int line_itr_cnt = 1;
+        while (line_itr->prev != NULL && line_itr_cnt < 25) {
+            line_itr = line_itr->prev;
+        }
+        while (line_itr != NULL) {
+            if (line_itr->append_update != NULL) {
+                /* copy update over to message to send */
+                memcpy(update_itr, line_itr->append_update, sizeof(update));
+                update_itr++;
+                if (++num_updates_itr == upper_bound_updates_per_message) {
+                    /* buffer is full, send it*/
+                    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+                                           client_name, 0, 
+                                           num_updates_itr*sizeof(update),
+                                           (char *) &serv_msg_buff);
+                    if(ret < 0) {
+                        SP_error(ret);
+                        Bye();
+                    }
+                    /* reset bundle*/
+                    update_itr = (update *)&serv_msg_buff;
+                    num_updates_itr = 0;
+                }
+                
+                /* Send likes of this append */
+                liker_node *liker_itr = line_itr->likers_list_head.next;
+                while (liker_itr != NULL) {
+                    if (liker_itr->like_update != NULL 
+                        && ((like_payload *)&liker_itr->like_update->payload)->toggle){
+                        /* This like node and a like, not unlike, update */
+                        /* add update to message buff */
+                        /* copy update over to message to send */
+                        memcpy(update_itr, liker_itr->like_update, sizeof(update));
+                        update_itr++;
+                        if (++num_updates_itr == upper_bound_updates_per_message) {
+                            /* buffer is full, send it*/
+                            int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+                                                   client_name, 0, 
+                                                   num_updates_itr*sizeof(update),
+                                                   (char *) &serv_msg_buff);
+                            if(ret < 0) {
+                                SP_error(ret);
+                                Bye();
+                            }
+                            /* reset bundle*/
+                            update_itr = (update *)&serv_msg_buff;
+                            num_updates_itr = 0;
+                        }
+                    }
+                }
+            }    
+        }
+        /* if the bundle has updates to be sent, send the bundle */
+        if (num_updates_itr > 0) {
+            int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+                                   client_name, 0, 
+                                   num_updates_itr*sizeof(update),
+                                   (char *) &serv_msg_buff);
+            if(ret < 0) {
+                SP_error(ret);
+                Bye();
+            }
+        }
+    }
+
 }
 
 
@@ -905,7 +1011,7 @@ static void	Read_message() {
                 server_message *recv_serv_msg = (server_message *)mess;
                 switch(mess_type) {
                     case 0: // regular update
-                        handle_server_update_bundle(recv_serv_msg,ret, sender);
+                        handle_server_update_bundle(recv_serv_msg,ret);
                         break;
                     case 1:
                         handle_start_merge((int *)(recv_serv_msg->payload), get_group_num_from_name(sender));
@@ -913,7 +1019,7 @@ static void	Read_message() {
                 } 
             } else if (strcmp(target_groups[idx], personal_group) == 0) {
                 /* The message was sent to the server's personal group (from a client)*/
-                handle_client_message((update *)mess, ret, sender);
+                handle_client_message((update *)mess, sender);
             } else {
                 /* The server should not be receiving regular messages from any other groups
                  * (i.e. chat room groups) */
