@@ -245,6 +245,7 @@ void handle_append_update(update *new_update) {
             }
             char chat_room_group[MAX_GROUP_NAME];
             get_room_group(process_index, room_node->chat_room, chat_room_group);
+            if (DEBUG) printf("mutlicast to chat_room_group %s\n", chat_room_group);
             int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), chat_room_group, 0, num_updates_to_send*sizeof(update), (char *) &server_client_mess_buff);
             if(ret < 0) {
                 SP_error(ret);
