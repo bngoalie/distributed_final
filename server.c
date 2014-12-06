@@ -495,9 +495,11 @@ void handle_client_message(update *client_update, int mess_size, char *sender) {
             break;
         case 3:
             /* TODO: processes username update*/
+
             break;
         case 4:
             /* TODO: processes view update*/
+            handle_client_view(client_update, sender);
             break;
         case 5:
             /* TODO: processes history update*/
@@ -741,6 +743,19 @@ void handle_room_client_leave(update *leave_update, char *client_name, int notif
             SP_error(ret);
             Bye();
         }
+    }
+}
+
+void handle_client_view(update *client_update, char *sender) {
+    update *new_update = (update *)&serv_msg_buff;
+    memcpy(new_update, client_update, sizeof(update));
+    int *current_view_payload = ((view_payload *)&(new_update->payload))->view;
+    memcpy(current_view_payload, server_status, sizeof(server_status));
+    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), sender, 0, 
+                           sizeof(update), (char *) new_update);
+    if(ret < 0) {
+        SP_error(ret);
+        Bye();
     }
 }
 
