@@ -163,8 +163,8 @@ void handle_update(update *new_update, char *private_spread_group) {
                 handle_like_update(new_update_node->update);
                 break;
             case 2:
-                private_spread_group = ((join_payload *)&new_update_node->update->payload)->client_name;
-                handle_join_update(new_update_node->update, private_spread_group, 0);
+//                private_spread_group = ((join_payload *)&new_update_node->update->payload)->client_name;
+                handle_server_join_update(new_update_node->update);
                 break;
             default:
                 perror("unexpected update type\n");
@@ -459,10 +459,11 @@ void handle_client_join_update(update *join_update, char *client_name) {
     handle_server_join_update(ret_update_node->update);
     
     memcpy((update *)&serv_msg_buff, join_update, sizeof(update));
+
     /* Send new update to servers */
     send_server_message(&serv_msg_buff, sizeof(update)); 
 }
-
+/*
 void handle_join_update(update *join_update, char *client_spread_group, 
                         int notify_option) {
     int server_id = (join_update->lts).server_id;
@@ -474,6 +475,61 @@ void handle_join_update(update *join_update, char *client_spread_group,
         handle_lobby_client_join(client_spread_group, server_id, join_update, 
                                  notify_option); 
     }
+}*/
+void handle_client_join_lobby(char *client_name) {
+    /* We will assume that the client is not in the lobby. 
+     * We just need to enqueue the client on the list*/
+    client_node *new_client_node = NULL;
+    if ((new_client_node = malloc(sizeof(client_node))) == NULL) {
+        perror("error mallicing new client that joined lobby\n");
+        Bye();
+    }
+    new_client_node->join_update = NULL;
+    new_client_node->next = (room_list_head.client_heads[process_index]).next;
+    (room_list_head.client_heads[process_index]).next= new_client_node;
+    strcpy(new_client_node->client_group, client_name);
+}
+
+
+void handle_client_leave_lobby(char *client_name) {
+    /* Find the client in the lobby. If they are in a chat room, 
+     * create a leave update, then remove the client.
+     * If they are not in a chat_room, just remove them.*/
+    client_node *client_itr = &room_list_head.client_heads[process_index];
+    while(client_itr->next != NULL 
+            && strcmp(client_itr->next->client_group, client_name) != 0) {
+       client_itr = client_itr->next; 
+    }
+    if (client_itr->next == NULL) {
+        perror("tried to remove a local client, couldn't find in lobby\n"); 
+        Bye();
+    }
+    update *new_leave_update = NULL;
+    if (client_itr->next->join_update != NULL) {
+        /* Client was in a chat room. Use that update to create a new leave update.*/
+        new_leave_update = client_itr->next->join_update;
+        new_leave_update->lts.server_id = process_index;
+        new_leave_update->lts.server_seq = ++local_server_seq;
+        new_leave_update->lts.counter = ++local_counter;
+        ((join_payload *)&new_leave_update->payload)->toggle = 0;
+        update_node *new_update_node = NULL;
+        if((new_update_node = store_update(new_leave_update)) == NULL) {
+            perror("unable to store new leave update when client left lobby and was in a chat room beforehand\n");
+            Bye();
+        }
+        new_leave_update = new_update_node->update;
+        /* handle leave update as if was sent to self */
+        handle_server_join_update(new_leave_update);
+        
+        memcpy((update *)&serv_msg_buff, new_leave_update, sizeof(update));
+        /* Send new update to servers */
+        send_server_message(&serv_msg_buff, sizeof(update)); 
+    }
+    
+    /* Remove client from lobby */
+    client_node *client_remove = client_itr->next;
+    client_itr->next = client_remove->next;
+    free(client_remove);
 }
 
 /* Currently returns the liker_node associated with the given line_node. */
@@ -665,7 +721,8 @@ void handle_client_message(update *client_update, int mess_size, char *sender) {
             break;
         case 2:
             /* processes join update*/
-            handle_join_update(client_update, sender, 2);
+            handle_client_join_update(client_update, sender);
+            /* Since clients only send joins, this should always happen.*/
             if (((join_payload *)&client_update->payload)->toggle == 1) {
                 send_current_state_to_client(sender, client_update->chat_room);
             }
@@ -735,203 +792,6 @@ void send_server_message(server_message *msg_to_send, int size_of_message) {
     }
 }
 
-void handle_lobby_client_join(char *client_name, int server_id, 
-                              update *join_update, int notify_option) {
-    client_node *lobby_client_node = NULL;
-    client_node *tmp_node = NULL;
-    client_node *client_itr = &(room_list_head.client_heads[server_id]);
-    if(DEBUG) printf("/* Find in lobby */\n");
-    while (client_itr->next != NULL
-        && strcmp(client_itr->next->client_group, client_name) != 0) {
-        client_itr = client_itr->next;
-    }
-    lobby_client_node = client_itr->next;
-
-    if (lobby_client_node == NULL) {
-    if (DEBUG) printf("/* Insert into lobby if not in lobby*/\n");
-
-        if ((tmp_node = malloc(sizeof(client_node))) == NULL) {
-            perror("error mallocing new client node\n");
-            Bye();   
-        }
-        tmp_node->next = client_itr->next;
-        client_itr->next = tmp_node;
-        tmp_node->join_update = NULL;
-        /* TODO: this currently would include the #'s, which would include the
-         * machine name. Do we care? */
-        strcpy(tmp_node->client_group, client_name);
-        lobby_client_node = tmp_node;
-    }
-
-    client_node *client_node_to_insert = NULL;
-    if (join_update != NULL && join_update->chat_room[0] != 0) {
-        if (DEBUG) printf("/* See if there is a join update for a chat room */\n");
-        if (DEBUG) printf("there is a join_update, and it's chat room is non-null\n");
-        if (lobby_client_node->join_update != NULL 
-            && lobby_client_node->join_update->chat_room[0] != 0) {
-            if (DEBUG) printf("the lobby_node had a join_update, and it's chat room is non-null\n");
-            /* Find current, soon to be previous, chat room's client_node to move */
-            room_node *prev_room 
-                = get_chat_room_node(lobby_client_node->join_update->chat_room);
-            if (prev_room == NULL) {
-                perror("apparently a chat room does not exist for an already existing join update\n");
-                Bye();   
-            }
-            client_itr = &(prev_room->client_heads[server_id]);
-            while (client_itr->next != NULL 
-                    && strcmp(client_itr->next->client_group, client_name) != 0) {
-                client_itr = client_itr->next; 
-            }
-            client_node_to_insert = client_itr->next;
-            if (client_node_to_insert != NULL) {
-                /* Remove the node from the chat room, to be inserted in new room */
-                client_itr->next = client_node_to_insert->next;
-            }
-        }
-
-        if (client_node_to_insert == NULL) {
-            if ((tmp_node = malloc(sizeof(client_node))) == NULL) {
-                perror("error mallocing new client node\n");
-                Bye();   
-            }
-            /* TODO: this currently would include the #'s, which would include the
-             * machine name. Do we care? */
-            strcpy(tmp_node->client_group, client_name);
-            client_node_to_insert = tmp_node;
-        } 
-        client_node_to_insert->join_update = join_update;
-        
-        /* Create new client node in appropriate chat room*/ 
-        room_node *current_room = get_chat_room_node(join_update->chat_room);
-        if (current_room == NULL) {
-            current_room = append_chat_room_node(join_update->chat_room);
-        }
-        client_itr = &(current_room->client_heads[server_id]);
-        client_node_to_insert->next = client_itr->next;
-        client_itr->next = client_node_to_insert;
-        lobby_client_node->join_update = join_update;
-        if (notify_option != 0 && notify_option != 3) {
-            /* Notify servers of the leave */
-            if (DEBUG) {
-                printf("in handling join, about to send to servers\n");
-            }
-            if (server_id == process_index) {
-               join_update->lts.server_id = process_index;
-               join_update->lts.server_seq = ++local_server_seq; 
-               join_update->lts.counter = ++local_counter;
-            }
-            send_server_message((server_message *)join_update, sizeof(update));
-        }
-        if (notify_option != 1 && notify_option != 3) {
-            /* Other option is to notify the appropriate chat room group*/
-            char tmp_room_group[MAX_GROUP_NAME];
-            get_room_group(server_id, join_update->chat_room, tmp_room_group);
-            int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), 
-                                  tmp_room_group, 0, sizeof(update), 
-                                  (char *) join_update);
-            if(ret < 0) {
-                SP_error(ret);
-                Bye();
-            }
-        }
-    }
-}
-
-void handle_lobby_client_leave(char *client_name, int notify_option,
-                               update *leave_update, int server_id) {
-    /* Find the appropriate client node. If exists */
-    client_node *client_itr = &(room_list_head.client_heads[process_index]);
-    while (client_itr->next != NULL 
-            && strcmp(client_itr->next->client_group, client_name) != 0 ) {
-        client_itr = client_itr->next;
-    }
-    if (client_itr->next == NULL) {
-        perror("handle_lobby_client_leave calle on client not found in lobby");
-        Bye();
-    }
-    client_node *client_to_remove = client_itr->next;
-    if (client_to_remove->join_update != NULL 
-        && client_to_remove->join_update->chat_room[0] != 0 ) {
-        /* TODO: determine what chat room currently in, remove that node, 
-         * update servers */
-        /* Create Leave Update that is sent to servers.*/
-        if (leave_update == NULL && server_id == process_index) {
-            if (DEBUG) printf("create new_leave_update\n");
-            leave_update = (update *)&serv_msg_buff;
-            memcpy(leave_update, client_to_remove->join_update, sizeof(update));
-            leave_update->type = 2;
-            (leave_update->lts).server_id = process_index;
-            ((join_payload *)&(leave_update->payload))->toggle = 0;
-        } else if (leave_update == NULL) {
-            perror("The given leave_update was null and not for a local client. The server cannot create a leave_update for another server's client\n");
-            Bye();
-        }
-        if (DEBUG) printf("attempt to handle_room_client_leave\n");
-        handle_room_client_leave(leave_update, client_name, notify_option);
-    }
-    if (leave_update == NULL) {
-        /* Remove the client from the lobby. We no long know of him. */
-        client_itr->next = client_to_remove->next;
-        /* TODO: ensure freeing correct. Check for errors? */
-        /* We do not free the updates themselves, they are maintained by proper 
-         * list of updates */
-        free(client_to_remove);
-    }
-    if (DEBUG) {
-        printf("succesfully exited handle_lobby_client_leave \n");
-    }
-}
-
-void handle_room_client_leave(update *leave_update, char *client_name, int notify_option) {
-    int server_id = (leave_update->lts).server_id;
-    char *chat_room = leave_update->chat_room; 
-    room_node *chat_room_node = get_chat_room_node(chat_room); 
-    if (chat_room_node == NULL) {
-        perror("a leave update should only occur for an existing room....\n");
-        Bye();
-    } 
-    /* Find corresponding client in chat room. */
-    client_node *client_itr = &(chat_room_node->client_heads[server_id]);
-    /* Exit when either: reach end, find the same client_group when 
-    * leave_update is from this server, or the has same server_id and username */
-
-    while (client_itr->next != NULL 
-            && strcmp(client_itr->next->client_group, client_name) != 0 ) {
-        client_itr = client_itr->next;
-    }
-    if (client_itr->next == NULL) {
-        perror("unable to find client that was claimed to have left a chat_room.\n");
-        Bye();
-    }
-    /* Free/remove the apprpriate client. */
-    client_node *client_to_remove = client_itr->next;
-    client_itr->next = client_to_remove->next;
-    free(client_to_remove);
-
-    if (notify_option != 0 && notify_option != 3) {
-        /* Notify servers of the leave */
-        (leave_update->lts).server_id = process_index;
-        (leave_update->lts).counter = ++local_counter;
-        (leave_update->lts).server_seq = ++local_server_seq;
-        send_server_message((server_message *)leave_update, sizeof(update));
-    }
-    if (notify_option != 1 && notify_option != 3) {
-        /* Other option is to notify the appropriate chat room group*/
-        char tmp_room_group[MAX_GROUP_NAME];
-        get_room_group(server_id, chat_room, tmp_room_group);
-        int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), 
-                              tmp_room_group, 0, sizeof(update), 
-                              (char *) leave_update);
-        if(ret < 0) {
-            SP_error(ret);
-            Bye();
-        }
-    }
-    if (DEBUG) {
-        printf("succesfully exited handle_room_client_leave \n");
-    }
-}
-
 void handle_client_view(update *client_update, char *sender) {
     update *new_update = (update *)&serv_msg_buff;
     memcpy(new_update, client_update, sizeof(update));
@@ -946,11 +806,11 @@ void handle_client_view(update *client_update, char *sender) {
 }
 
 void handle_client_username(update *client_update, char *sender) {
-    char *chat_room = client_update->chat_room;
+   /* char *chat_room = client_update->chat_room;
     int notify_option = 2;
     if (chat_room[0] == 0) {
-        /* Client does not have a chat room, he is in the lobby, do not send 
-         * updates to anyone */
+        * Client does not have a chat room, he is in the lobby, do not send 
+         * updates to anyone *
          notify_option = 3;
     }
     update *new_update = (update *)&serv_msg_buff;
@@ -958,7 +818,7 @@ void handle_client_username(update *client_update, char *sender) {
     strcpy(((join_payload *)&new_update->payload)->client_name, sender);
     new_update->type = 2;
     new_update->lts.server_id = process_index;
-    /* set join update to a leave.*/
+    * set join update to a leave.*
     ((join_payload *)&new_update->payload)->toggle = 0;
     if (DEBUG) {
         printf("calling handle client leave\n");
@@ -968,7 +828,7 @@ void handle_client_username(update *client_update, char *sender) {
     if (DEBUG) {
         printf("calling handle client join\n");
     }
-    handle_lobby_client_join(sender, process_index, new_update, notify_option);
+    handle_lobby_client_join(sender, process_index, new_update, notify_option);*/
 }
 
 void send_current_state_to_client(char *client_name, char *chat_room) {
@@ -1069,11 +929,10 @@ static void	Read_message() {
                 /* TODO: change in lobby group. Either someone left or joined. */
                 if (Is_caused_join_mess(service_type)) {
                     /* TODO: a single client joined the lobby */
-                    handle_lobby_client_join(memb_info.changed_member, 
-                                             process_index, NULL,2);
+                    handle_client_join_lobby(memb_info.changed_member);
                 } else if (Is_caused_leave_mess(service_type)
                             || Is_caused_disconnect_mess(service_type)) {
-                    handle_lobby_client_leave(memb_info.changed_member, 2, NULL, process_index);
+                    handle_client_leave_lobby(memb_info.changed_member);
                 } else if (Is_caused_network_mess(service_type)) {
                     /* TODO: figure out who left? DEAL WITH IT */
                 } else {

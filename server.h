@@ -58,8 +58,6 @@ void handle_append_update(update *new_update);
 room_node * append_chat_room_node(char *chat_room);
 client_node * add_client_to_list_if_relevant(client_node *client_list_head, 
                                                 char *group, update *join_update); 
-void handle_join_update(update *new_update, char *client_spread_group, 
-                        int notify_option);
 void handle_update(update *new_update, char *private_spread_group);
 update_node * store_update(update *update);
 void handle_server_update_bundle(server_message *recv_serv_msg, 
@@ -72,13 +70,12 @@ void send_server_message(server_message *msg_to_send, int size_of_message);
 int should_choose_new_server(int current_max_seq, int new_max_seq, 
                              int current_server_id, int new_server_id);
 void handle_client_like(update *client_update);
-void handle_lobby_client_join(char *client_name, int server_id, update *join_update, int notify_option);
-void handle_lobby_client_leave(char *client_name, int notify_option, update *leave_update, int server_id);
-void handle_room_client_leave(update *leave_update, char *client_name, int notify_option);
 void handle_client_view(update *client_update, char *sender);
 void handle_client_username(update *client_update, char *sender);
 void send_current_state_to_client(char *client_name, char *chat_room);
 void handle_server_join_update(update *join_update);
-
+void handle_client_join_update(update *join_update, char *client_name);
+void handle_client_join_lobby(char *client_name); 
+void handle_client_leave_lobby(char *client_name);
 
 #endif
