@@ -717,18 +717,19 @@ void handle_lobby_client_leave(char *client_name, int notify_option,
         Bye();
     }
     client_node *client_to_remove = client_itr->next;
-    if (client_to_remove->join_update != NULL) {
+    if (client_to_remove->join_update != NULL 
+        && client_to_remove->join_update->chat_room[0] != 0 ) {
         /* TODO: determine what chat room currently in, remove that node, 
          * update servers */
         /* Create Leave Update that is sent to servers.*/
         if (leave_update == NULL && server_id == process_index) {
-            update *leave_update = (update *)&serv_msg_buff;
-            memcpy(leave_update, client_to_remove, sizeof(update));
-            leave_update->type = 2;
-            (leave_update->lts).server_id = process_index;
-            (leave_update->lts).counter = ++local_counter;
-            (leave_update->lts).server_seq = ++local_server_seq;
-            ((join_payload *)&(leave_update->payload))->toggle = 0;
+            update *new_leave_update = (update *)&serv_msg_buff;
+            memcpy(new_leave_update, client_to_remove->join_update, sizeof(update));
+            new_leave_update->type = 2;
+            (new_leave_update->lts).server_id = process_index;
+/*            (new_leave_update->lts).counter = ++local_counter;
+            (new_leave_update->lts).server_seq = ++local_server_seq;*/
+            ((join_payload *)&(new_leave_update->payload))->toggle = 0;
         } else if (leave_update == NULL) {
             perror("The given leave_update was null and not for a local client. The server cannot create a leave_update for another server's client\n");
             Bye();
@@ -763,10 +764,10 @@ void handle_room_client_leave(update *leave_update, char *client_name, int notif
 
     while (client_itr->next != NULL 
             && strcmp(client_itr->next->client_group, client_name) != 0
-            && ((client_itr->next->join_update->lts).server_id == process_index 
+    /*        && ((client_itr->next->join_update->lts).server_id == process_index 
                 || (client_itr->next->join_update->lts).server_id != server_id
                 || strcmp(client_itr->next->join_update->username, 
-                          leave_update->username) != 0)) {
+                          leave_update->username) != 0)*/) {
         client_itr = client_itr->next;
     }
     if (client_itr->next == NULL) {
@@ -780,6 +781,9 @@ void handle_room_client_leave(update *leave_update, char *client_name, int notif
 
     if (notify_option != 0 && notify_option != 3) {
         /* Notify servers of the leave */
+        (leave_update->lts).server_id = process_index;
+        (leave_update->lts).counter = ++local_counter;
+        (leave_update->lts).server_seq = ++local_server_seq;
         send_server_message((server_message *)leave_update, sizeof(update));
     }
     if (notify_option != 1 && notify_option != 3) {
