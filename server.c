@@ -527,6 +527,13 @@ void handle_client_append(update *client_update) {
     (new_update->lts).counter = ++local_counter;
     (new_update->lts).server_seq = ++local_server_seq;
     (new_update->lts).server_id = process_index;
+    
+    if(DEBUG){
+        append_payload *payload = (append_payload *)&(client_update->payload);
+        printf("Received append from client\n");
+        printf("Message: %s\n, Username: %s\n, Room: %s\n",
+           payload->message, client_update->username, client_update->chat_room);
+    }
 
     /* Apply the update */
     handle_update(new_update, Private_group);

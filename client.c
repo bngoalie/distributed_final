@@ -22,6 +22,7 @@
 char        username[MAX_USERNAME_LENGTH]; 
 char        private_group[MAX_GROUP_NAME]; 
 char        room_group[MAX_GROUP_NAME];
+char        server_group[MAX_GROUP_NAME];
 char        room_name[MAX_ROOM_NAME_LENGTH];
 bool        connected;
 bool        username_sent;
@@ -424,6 +425,7 @@ void connect_to_server(int new_id){
                         join_chat_room(room_group, true); // TODO: is this a problem if in lobby?
                     }
                     // Indicate success
+                    get_single_server_group(server_id, server_group); // get server public group
                     connected = true;
                     printf("Server %d detected in lobby group\n", server_id+1);
                     // If username is already set, send to server
@@ -527,7 +529,7 @@ void join_chat_room(char *new_room, bool is_group_name){
             payload->toggle = 1;
 
             // Send message
-            ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, room_group, 0, sizeof(update), mess);
+            ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
             if(ret < 0){
                 SP_error(ret);
                 close_client();
@@ -603,7 +605,7 @@ void append_line(char *new_line){
         strcpy((char *)&(append->payload), new_line);
 
         // Send update to current server
-        ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, &room_group[0], 0, sizeof(update), mess);
+        ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
         if(ret < 0){
             SP_error(ret);
             close_client();
@@ -668,7 +670,7 @@ void like_line(int line_num, bool like){
                     payload->lts = line_itr->lts;
 
                     // Send update to current server
-                    ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, room_group, 0, sizeof(update), mess);
+                    ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
                     if(ret < 0){
                         SP_error(ret);
                         close_client();
@@ -698,7 +700,7 @@ void send_username_update(){
         strcpy(username_update->chat_room, room_name);
 
         // Send to server
-        ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, room_group, 0, sizeof(update), mess);
+        ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
         if(ret < 0){
             SP_error(ret);
             close_client();
@@ -722,7 +724,7 @@ void request_view(){
     // No payload for this message type
 
     // Send to server
-    ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, room_group, 0, sizeof(update), mess);
+    ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
     if(ret < 0){
         SP_error(ret);
         close_client();
