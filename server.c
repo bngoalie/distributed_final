@@ -655,10 +655,12 @@ void handle_lobby_client_leave(char *client_name, int notify_option,
     client_node *client_itr = &(room_list_head.client_heads[process_index]);
     while (client_itr->next != NULL 
             && strcmp(client_itr->next->client_group, client_name) != 0
-            && ((client_itr->next->join_update->lts).server_id == process_index 
+            && (leave_update == NULL
+                || (client_itr->next->join_update->lts).server_id == process_index 
                 || (client_itr->next->join_update->lts).server_id != server_id
                 || strcmp(client_itr->next->join_update->username, 
-                          leave_update->username) != 0)) {
+                          leave_update->username) != 0)
+                || strcmp(client_itr->next->join_update->chat_room, leave_update->chat_room) != 0) {
         client_itr = client_itr->next;
     }
     if (client_itr->next == NULL) {
@@ -684,18 +686,24 @@ void handle_lobby_client_leave(char *client_name, int notify_option,
         }
         handle_room_client_leave(leave_update, client_name, notify_option);
     }
-    /* Remove the client from the lobby. We no long know of him. */
-    client_itr->next = client_to_remove->next;
-    /* TODO: ensure freeing correct. Check for errors? */
-    /* We do not free the updates themselves, they are maintained by proper 
-     * list of updates */
-    free(client_to_remove);
+    if (leave_update == NULL) {
+        /* Remove the client from the lobby. We no long know of him. */
+        client_itr->next = client_to_remove->next;
+        /* TODO: ensure freeing correct. Check for errors? */
+        /* We do not free the updates themselves, they are maintained by proper 
+         * list of updates */
+        free(client_to_remove);
+    }
 }
 
 void handle_room_client_leave(update *leave_update, char *client_name, int notify_option) {
     int server_id = (leave_update->lts).server_id;
     char *chat_room = leave_update->chat_room; 
-    room_node *chat_room_node = get_chat_room_node(chat_room);  
+    room_node *chat_room_node = get_chat_room_node(chat_room); 
+    if (chat_room_node == NULL) {
+        perror("a leave update should only occur for an existing room....\n");
+        Bye();
+    } 
     /* Find corresponding client in chat room. */
     client_node *client_itr = &(chat_room_node->client_heads[server_id]);
     /* Exit when either: reach end, find the same client_group when 
