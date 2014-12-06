@@ -437,7 +437,6 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
     if (expected_completion_mask == completion_mask) {
         /* TODO: send merging messages */ 
     }
-
 }
 
 int should_choose_new_server(int current_max_seq, int new_max_seq, 
@@ -491,7 +490,7 @@ void handle_client_message(update *client_update, int mess_size, char *sender) {
             handle_client_like(client_update);
             break;
         case 2:
-            /* TODO: processes join update*/
+            /* processes join update*/
             handle_join_update(client_update, sender);
             break;
         case 3:

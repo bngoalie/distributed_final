@@ -24,6 +24,7 @@
 #define MAX_LINE_LENGTH         80
 #define MAX_MESS_LEN            100000
 #define SERVER_INDEX_INDEX      3
+#define MAX_MEMBERS     10
 
 /* TYPE DEFINITIONS */
 
@@ -62,6 +63,11 @@ typedef struct {
 typedef struct {
     char room[MAX_ROOM_NAME_LENGTH];
 } room_payload;
+
+// View payload
+typedef struct {
+    int view[MAX_MEMBERS];
+} view_payload;
 
 /* Update
  * 0: append
