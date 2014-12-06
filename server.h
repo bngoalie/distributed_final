@@ -75,6 +75,7 @@ void handle_lobby_client_join(char *client_name, int server_id, update *join_upd
 void handle_lobby_client_leave(char *client_name, int notify_option, update *leave_update, int server_id);
 void handle_room_client_leave(update *leave_update, char *client_name, int notify_option);
 void handle_client_view(update *client_update, char *sender);
+void handle_client_username(update *client_update, char *sender);
 
 
 #endif
