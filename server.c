@@ -609,7 +609,11 @@ void handle_lobby_client_join(char *client_name, int server_id,
             }
             tmp_node->next = client_itr->next;
             client_itr->next = tmp_node;
-            tmp_node->join_update = join_update;
+            if (join_update->chat_room[0] != 0) {
+                tmp_node->join_update = join_update;
+            } else {
+                tmp_node->join_update = NULL;
+            }
             /* TODO: this currently would include the #'s, which would include the
              * machine name. Do we care? */
             strcpy(tmp_node->client_group, client_name);
