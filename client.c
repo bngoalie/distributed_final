@@ -799,9 +799,9 @@ void update_display(){
             printf("Just before iterating likes\n");
         // Counter number of likes
         while(like_itr != NULL){
-            printf("Like?? ");
+            printf("Like??\n");
             likes++;
-            printf("LIKE! ");
+            printf("LIKE!\n");
             like_itr = like_itr->next;
         }
         // Print number of likes
