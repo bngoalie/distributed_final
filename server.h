@@ -14,7 +14,7 @@
 #include "support.h"
 
 /* CONSTANT DEFINITIONS */
-#define MAX_MEMBERS     10
+
 
 /* TYPE DEFINITIONS */
 
