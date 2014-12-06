@@ -686,6 +686,7 @@ void handle_lobby_client_leave(char *client_name, int notify_option,
     while (client_itr->next != NULL 
             && strcmp(client_itr->next->client_group, client_name) != 0
             && (leave_update == NULL
+                || client_itr->next->join_update == NULL
                 || (client_itr->next->join_update->lts).server_id == process_index 
                 || (client_itr->next->join_update->lts).server_id != server_id
                 || strcmp(client_itr->next->join_update->username, 
