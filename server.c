@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
         update update_buffer;
         while (fread(&update_buffer, sizeof(update), 1, fr) > 0) {
             if (DEBUG) printf("type %d, chat_room: %s, username %s\n", update_buffer.type, update_buffer.chat_room, update_buffer.username);
-            handle_update(&update_buffer);       
+            handle_update(&update_buffer, 0);       
         } 
        
         fclose(fr);
@@ -176,7 +176,7 @@ int main(int argc, char *argv[]) {
     E_handle_events();
 }
 
-void handle_update(update *new_update) {
+void handle_update(update *new_update, int send_client) {
     update *new_update_node = NULL;
     /* TODO: We do not want to receive our own updates. 
      * Should enter (update_server_id != process_index) logic here? */
@@ -187,14 +187,14 @@ void handle_update(update *new_update) {
         int update_type = new_update->type;
         switch (update_type) {
             case 0:
-                handle_append_update(new_update_node);
+                handle_append_update(new_update_node, send_client);
                 break;
             case 1:
-                handle_like_update(new_update_node);
+                handle_like_update(new_update_node, send_client);
                 break;
             case 2:
 //                private_spread_group = ((join_payload *)&new_update_node->update->payload)->client_name;
-                handle_server_join_update(new_update_node);
+                handle_server_join_update(new_update_node, send_client);
                 break;
             default:
                 perror("unexpected update type\n");
@@ -207,7 +207,7 @@ void handle_update(update *new_update) {
                        new_update_node->lts.server_seq);
 }
 
-void handle_append_update(update *new_update) {
+void handle_append_update(update *new_update, int send_client) {
     room_node *room_node = get_chat_room_node(new_update->chat_room);
     int line_node_already_existed = 1;
     int should_send_to_client = 1;
@@ -256,7 +256,7 @@ void handle_append_update(update *new_update) {
         tmp->append_update = new_update;
         /* TODO: Write new_update_node to disk*/
 
-        if (should_send_to_client == 1) {
+        if (should_send_to_client == 1 && send_client) {
             update *update_payload = (update *)(server_client_mess_buff.payload);
             int num_updates_to_send = 0;
             memcpy(update_payload, new_update, sizeof(update));
@@ -293,7 +293,7 @@ void handle_append_update(update *new_update) {
 }
 
 
-void handle_like_update(update *new_update) {
+void handle_like_update(update *new_update, int send_client) {
     int should_send_to_client = 1;
     lamport_timestamp target_lts = ((like_payload *)(&(new_update->payload)))->lts;
     room_node *room_node = get_chat_room_node(new_update->chat_room);
@@ -340,7 +340,7 @@ void handle_like_update(update *new_update) {
     } 
     liker_node->like_update = new_update;
 
-    if (should_send_to_client == 1) {
+    if (should_send_to_client == 1 && send_client) {
         /* TODO: send update to chat room group */
         update *update_payload = (update *)(server_client_mess_buff.payload);
         memcpy(update_payload, new_update, sizeof(update));
@@ -355,7 +355,7 @@ void handle_like_update(update *new_update) {
 }
 
 /* This function assumes new update already stored */
-void handle_server_join_update(update *join_update) {
+void handle_server_join_update(update *join_update, int send_client) {
     int server_id = (join_update->lts).server_id;
     int toggle = ((join_payload *)&(join_update->payload))->toggle;
     char *client_name =  ((join_payload *)&(join_update->payload))->client_name;
@@ -392,7 +392,7 @@ void handle_server_join_update(update *join_update) {
             perror("trying to process leave update for a client we don't know about\n");
             Bye();
         }
-    } else if (toggle == 1 && lobby_client_node->join_update != NULL) {
+    } else if (toggle == 1 && lobby_client_node->join_update != NULL && send_client) {
         /* He was in a group prior. send a fake leave message to clients */
         update *update_payload = (update *)(server_client_mess_buff.payload);
         memcpy(update_payload, lobby_client_node->join_update, sizeof(update));
@@ -478,16 +478,17 @@ void handle_server_join_update(update *join_update) {
         }
         lobby_client_node->join_update = join_update;
     }
-
-    update *update_payload = (update *)(server_client_mess_buff.payload);
-    memcpy(update_payload, join_update, sizeof(update));
-    char chat_room_group[MAX_GROUP_NAME];
-    get_room_group(process_index, chat_room, chat_room_group);
-    if (DEBUG) printf("sending to group %s\n", chat_room_group);
-    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), chat_room_group, 0, sizeof(update), (char *) &server_client_mess_buff);
-    if(ret < 0) {
-        SP_error(ret);
-        Bye();
+    if (send_client) {
+        update *update_payload = (update *)(server_client_mess_buff.payload);
+        memcpy(update_payload, join_update, sizeof(update));
+        char chat_room_group[MAX_GROUP_NAME];
+        get_room_group(process_index, chat_room, chat_room_group);
+        if (DEBUG) printf("sending to group %s\n", chat_room_group);
+        int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), chat_room_group, 0, sizeof(update), (char *) &server_client_mess_buff);
+        if(ret < 0) {
+            SP_error(ret);
+            Bye();
+        }
     }    
 }
 
@@ -508,7 +509,7 @@ void handle_client_join_update(update *join_update, char *client_name) {
         Bye();
     }
     /* Handle locally, which sends to clients */    
-    handle_server_join_update(ret_update_node);
+    handle_server_join_update(ret_update_node, 1);
     
     memcpy((update *)&serv_msg_buff, ret_update_node, sizeof(update));
 
@@ -557,7 +558,7 @@ void handle_client_leave_lobby(char *client_name) {
         }
         new_leave_update = new_update_node;
         /* handle leave update as if was sent to self */
-        handle_server_join_update(new_leave_update);
+        handle_server_join_update(new_leave_update, 1);
         
         memcpy((update *)&serv_msg_buff, new_leave_update, sizeof(update));
         /* Send new update to servers */
@@ -695,7 +696,7 @@ void handle_server_update_bundle(server_message *recv_serv_msg,
     int num_updates = message_size/sizeof(update);
     for (int idx = 0; idx < num_updates; idx++) {
         if(DEBUG) printf("handling update\n");
-        handle_update(update_itr);
+        handle_update(update_itr, 1);
         update_itr++;
     }
     if (merge_state && is_merge_finished()) {
@@ -723,7 +724,7 @@ void handle_leave_of_server(int left_server_index) {
         ((join_payload *)&leave_update->payload)->toggle = 0;
         client_itr = client_itr->next;
         /* process this leave update. it should update the clients. */
-        handle_server_join_update(leave_update); 
+        handle_server_join_update(leave_update, 1); 
     }
 }
 
@@ -996,7 +997,7 @@ void handle_client_append(update *client_update) {
     }
 
     /* Apply the update */
-    handle_update(new_update);
+    handle_update(new_update, 1);
 
     /* send set server_message to server group */
     send_server_message(&serv_msg_buff, sizeof(update), 0);
@@ -1014,7 +1015,7 @@ void handle_client_like(update *client_update) {
     (new_update->lts).server_id = process_index;
 
     /* Apply the update */
-    handle_update(new_update);
+    handle_update(new_update, 1);
 
     /* send set server_message to server group */
     send_server_message(&serv_msg_buff, sizeof(update), 0);
@@ -1077,7 +1078,7 @@ void handle_client_username(update *client_update, char *sender) {
             perror("unable to malloc new update for leave for changing username\n");
             Bye();
         }
-        handle_server_join_update(ret_update_node); 
+        handle_server_join_update(ret_update_node, 1); 
         if (DEBUG) {
             printf("sending leave to servers in username\n");
         }
@@ -1096,7 +1097,7 @@ void handle_client_username(update *client_update, char *sender) {
             perror("unable to malloc new update for leave for changing username\n");
             Bye();
         }
-       handle_server_join_update(ret_update_node); 
+       handle_server_join_update(ret_update_node, 1); 
         if (DEBUG) {
             printf("sending join to server in username\n");
         }

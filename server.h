@@ -50,15 +50,15 @@ typedef start_merge_payload update_request_payload;
  * because list has a sentinal node used of looking one node ahead. 
  * TODO: if end is set to null, default to end of queue (or just ignore it) */
 static void Read_message();
-void handle_like_update(update *new_update);
+void handle_like_update(update *new_update, int);
 liker_node * get_liker_node(line_node *line_node);
 liker_node * append_liker_node(line_node *line_node);
 room_node * get_chat_room_node(char *chat_room);
-void handle_append_update(update *new_update);
+void handle_append_update(update *new_update, int);
 room_node * append_chat_room_node(char *chat_room);
 client_node * add_client_to_list_if_relevant(client_node *client_list_head, 
                                                 char *group, update *join_update); 
-void handle_update(update *new_update);
+void handle_update(update *new_update, int);
 update * store_update(update *update);
 void handle_server_update_bundle(server_message *recv_serv_msg, 
                                     int message_size); 
@@ -74,7 +74,7 @@ void handle_client_like(update *client_update);
 void handle_client_view(update *client_update, char *sender);
 void handle_client_username(update *client_update, char *sender);
 void send_current_state_to_client(char *client_name, char *chat_room);
-void handle_server_join_update(update *join_update);
+void handle_server_join_update(update *join_update, int);
 void handle_client_join_update(update *join_update, char *client_name);
 void handle_client_join_lobby(char *client_name); 
 void handle_client_leave_lobby(char *client_name);
