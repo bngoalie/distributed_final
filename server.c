@@ -6,7 +6,9 @@
  * CS437 - Distributed Systems
  * Johns Hopkins University
  */
-
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
 #include "sp.h"
 #include <sys/types.h>
 #include <sys/time.h>
@@ -16,6 +18,7 @@
 #include "support.h"
 #include "server.h"
 #include <limits.h>
+#include <unistd.h>
 
 #define MAX_GROUPS      MAX_MEMBERS
 #define DEBUG           1
@@ -35,6 +38,7 @@ int         num_processes;
 int         process_index;
 int         seq;
 FILE        *fd = NULL;
+FILE        *fr = NULL;
 server_client_mess server_client_mess_buff;
 
 room_node room_list_head; // Should I make this the lobby?
@@ -101,11 +105,30 @@ int main(int argc, char *argv[]) {
     } 
 
     /* TODO: Read last known state from disk*/
+    char file_name[15];
+    sprintf(file_name, "%d", process_index);
+    if ( access(file_name, R_OK) != -1) {
 
+        if((fr = fopen(strcat(file_name, ".out"), "r")) == NULL) {
+            perror("fopen failed to open file for reading");
+            exit(0);
+        }
 
+        char *line = NULL;
+        ssize_t read;
+        size_t len = 0;
+        while ((read = getline(&line, &len, fr)) != -1) {
+            handle_update((update *)line);        
+        }
+        if (line != NULL) {
+            free(line);
+        }
+        fclose(fr);
+    }
+    
     /* Connect to spread daemon */
     /* Local vars */
-    int	    ret;
+    int	    ret = 0;
     sp_time test_timeout;
 
     /* Set timeouts */
@@ -114,7 +137,7 @@ int main(int argc, char *argv[]) {
     
     /* Parse arguments, display usage if invalid */
     Usage(argc, argv);
-
+    
     /* Connect to spread group */
     ret = SP_connect_timeout( Spread_name, User, 0, 1, &Mbox, Private_group, test_timeout );
     if(ret != ACCEPT_SESSION) {
@@ -125,21 +148,8 @@ int main(int argc, char *argv[]) {
         printf("User: connected to %s with private group %s\n", Spread_name, Private_group);
     }
 
-    /* TODO: join server_group and personal_group */
-    /* Join server_group */
-    ret = SP_join(Mbox, server_group);
-    if (ret < 0) {
-        SP_error(ret);
-    }
-    /* TODO: send out request to servers for all messages after largest knowns
-     * seqs from each server */
 
-    /* join server's personal_group.
-     * We do this last because we want to first get in sync with servers first */
-    /* TODO: this logic should probably only happen after this server is done
-     * merging" with the rest of the servers. 
-     * Issue is if instead treat requested updates regularly, and join personal_group
-     * then how determine different than regular updates and keep from spamming clients?*/
+    /* join server's personal_group. */
     ret = SP_join(Mbox, personal_group);
     if (ret < 0) {
         SP_error(ret);
@@ -153,7 +163,13 @@ int main(int argc, char *argv[]) {
         SP_error(ret);
         Bye();
     }
-
+     
+    /* Join server_group */
+    ret = SP_join(Mbox, server_group);
+    if (ret < 0) {
+        SP_error(ret);
+    }
+ 
     /* Configure event handler */
     E_init();
     E_attach_fd(Mbox, READ_FD, Read_message, 0, NULL, HIGH_PRIORITY);
@@ -656,7 +672,9 @@ update * store_update(update *new_update) {
             local_counter = (new_update->lts).counter;
         }       
 
-        /* TODO: consider writing to DISK HERE, so that when restart, know have the right seq. */
+        /* Write to disk. */
+        fprintf(fd, "%s", (char *)new_node->update);
+        fflush(fd);
         if (DEBUG) printf("current seq: %d\n", server_updates_array[update_server_id]->update->lts.server_seq); 
         return server_updates_array[update_server_id]->update;
     }
@@ -682,7 +700,6 @@ void handle_server_update_bundle(server_message *recv_serv_msg,
 }
 
 void handle_leave_of_server(int left_server_index) {
-    /* TODO: write this */
     /* Simply iterate throught the list of clients, creating a leave message
      * for each client (copy the join message) 
      * Be careful to iterate to next client before sending leave message.*/
