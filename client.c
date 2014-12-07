@@ -27,9 +27,11 @@ mailbox     mbox;                               // Spread mailbox
 // Room data structures globals
 line_node   lines_list_head;    // Sentinel head, next points to newest line
 line_node   *lines_list_tail;   // Tail pointer to oldest line
+line_node   history_head;       // Sentinel head for history
+line_node   *history_tail;      // Tail pointer for history
 client_node client_list_head;   // Sentinel head, next points to user (unordered)
-int         num_lines;          // Total number of lines (up to 25 unless history)
-
+int         num_lines;          // Total number of lines (up to 25)
+int         history_lines;      // Lotal number of history lines
 
 /* Main */
 int main(){
@@ -45,7 +47,8 @@ int main(){
     server_id = -1;
     lines_list_tail = NULL;
     client_list_head.next = NULL;
-
+    history_tail = NULL;
+    history_head.next = NULL;
     // Malloc message buffer
     if((mess = malloc(sizeof(server_client_mess))) == NULL){
         printf("Failed to malloc message buffer\n");
@@ -126,7 +129,7 @@ void parse_update(){
     int     service_type;
     int16   mess_type;
     int     endian_mismatch;
-    int     ret;
+    int     ret, type;
 
     // Receive message   
     display_view = false;
@@ -150,10 +153,11 @@ void parse_update(){
         // Unpack update(s)
         new_update = ((update *)(((server_client_mess *)mess)->payload));
         for(unsigned int i = 0; i < (ret/sizeof(update)); i++){
+            type = new_update->type;
             if(DEBUG)
                 printf("Received update of type %d from server for username %s and room %s\n",
                     new_update->type, new_update->username, new_update->chat_room);
-            switch(new_update->type){
+            switch(type){
                 case 0: // Append
                     process_append(new_update);
                     break;
@@ -169,15 +173,18 @@ void parse_update(){
                     process_view(new_update);
                     break;
                 case 5: // History
+                    if(history_mode)
+                        clear_lines();
                     history_mode = !history_mode; // toggle mode
+                    break;
                 default:
-                    printf("Error: received unknown update type!\n");
+                    printf("Error: received unknown update type %d.\n", new_update->type);
                     break;
             }
             new_update++; // increment to next update it bundle
         }
         // Refresh Display
-        if(!display_view){
+        if(!display_view && type != 5){
             update_display();
         }
         printf(CURSOR);
@@ -215,15 +222,25 @@ void parse_update(){
 /* Process append update from server */
 void process_append(update *append_update){
     // Local vars
-    line_node   *line_list_itr = &lines_list_head;
+    line_node   *line_list_itr;
     line_node   *tmp;
     liker_node  *like_list_itr;
     liker_node  *tmp2;
-    int         itr_lines = 0; 
+    int         itr_lines = 0;
+    int         line_max; 
     update      *new_update;
 
     if(DEBUG)
         printf("Append message %s\n", (char *)&(append_update->payload));
+
+    // Set iterator and line limit based on history mode
+    if(history_mode){
+        line_max = 99999999;
+        line_list_itr = &history_head;
+    }else{
+        line_max = 25;
+        line_list_itr = &lines_list_head;
+    }
 
     // Iterate through lines to find insertion point, if one exists
     while(line_list_itr->next != NULL &&
@@ -232,7 +249,7 @@ void process_append(update *append_update){
         itr_lines++;
     }
     // Insert line if doesn't already exist and isn't too old (25+ lines)
-    if((line_list_itr->next == NULL && itr_lines < 25) ||
+    if((line_list_itr->next == NULL && itr_lines < line_max) ||
             compare_lts(append_update->lts, line_list_itr->next->lts) != 0){
         if((tmp=malloc(sizeof(*line_list_itr))) == NULL){ // malloc new node
             printf("Error: failed to malloc line_node\n");
@@ -244,8 +261,12 @@ void process_append(update *append_update){
         // Link adjacent nodes to new node
         if(tmp->next != NULL)
             tmp->next->prev = tmp;
-        else
-            lines_list_tail = tmp;
+        else{
+            if(history_mode)
+                history_tail = tmp;
+            else
+                lines_list_tail = tmp;
+        }
         line_list_itr->next = tmp;
         // Set timestamp
         tmp->lts = append_update->lts;
@@ -259,7 +280,7 @@ void process_append(update *append_update){
         tmp->likers_list_head.next = NULL;  // Need to set pointers to NULL!!
        
         // Increment total number of lines and check limit
-        if(++num_lines > 25){
+        if(!history_mode && ++num_lines > 25){
             // Remove 26th line
             tmp = lines_list_tail;
             lines_list_tail = lines_list_tail->prev;
@@ -295,8 +316,14 @@ void process_like(update *like_update){
     if(DEBUG)
         printf("Toggle value: %s\n", payload->toggle == 1 ? "like" : "unlike");
 
+    // Set iterator according to history mode
+    if(history_mode)
+        line_itr = history_tail;
+    else
+        line_itr = lines_list_tail; // iterator starts at oldest message
+    
+
     // Find relevant line (if exists) via LTS
-    line_itr = lines_list_tail; // iterator starts at oldest message
     line_found = false;
     while(line_itr != NULL && !line_found){ 
         if(!compare_lts(line_itr->lts, payload->lts)) 
@@ -829,6 +856,7 @@ void update_display(){
     // Local vars
     client_node     *user_itr;
     line_node       *line_itr;
+    line_node       *itr_limiter;
     liker_node      *like_itr;
     char            buff[MAX_USERNAME_LENGTH+5];
     int             likes, line_num;
@@ -850,11 +878,18 @@ void update_display(){
     }
     printf("\n");
     
-    // Iterate through lines data structure
-    line_itr = lines_list_tail;
-    line_num = 0;
+    // Set iterator and limiter based on history mode
+    if(history_mode){
+        line_itr = history_tail;
+        itr_limiter = &history_head;
+    }else{
+        itr_limiter = &lines_list_head;
+        line_itr = lines_list_tail;
+    }
 
-    while(line_itr != NULL && line_itr != &lines_list_head){
+    // Iterate through lines data structure
+    line_num = 0;
+    while(line_itr != NULL && line_itr != itr_limiter){
         // Increment and print line number
         printf("%6d ", ++line_num);
         fflush(stdout); 
@@ -891,8 +926,13 @@ void clear_lines(){
     liker_node  *like_itr;
     liker_node  *tmp2;
 
+    // Set iterators based on history mode
+    if(history_mode)
+        line_itr = history_head.next;
+    else
+        line_itr = lines_list_head.next;
+    
     // Iterate through lines, free
-    line_itr = lines_list_head.next;
     while(line_itr != NULL){
         free(line_itr->append_update);
 
@@ -908,10 +948,16 @@ void clear_lines(){
         free(tmp);
     }
     
-    // Clear globals
-    lines_list_head.next = NULL;
-    lines_list_tail = NULL;
-    num_lines = 0; 
+    // Clear globals based on history mode
+    if(history_mode){
+        history_head.next = NULL;
+        history_tail = NULL;
+        history_lines = 0;
+    }else{
+        lines_list_head.next = NULL;
+        lines_list_tail = NULL; 
+        num_lines = 0;
+    }
 }
 
 /* Clear users data structure  */
