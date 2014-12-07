@@ -46,6 +46,7 @@ server_message serv_msg_buff;
 update sending_update_buff;
 update_node *client_update_queue_head;
 update_node *client_update_queue_tail;
+update_node *next_msg_to_send_array[MAX_MEMBERS];
 char        server_names[MAX_MEMBERS][MAX_GROUP_NAME];
 int         server_status[MAX_MEMBERS];
 int         prev_server_status[MAX_MEMBERS];
@@ -91,6 +92,7 @@ int main(int argc, char *argv[]) {
         server_updates_array[i] = NULL;
         server_responsibility_assign[i] = num_processes; 
         expected_max_seqs[i] = 0;
+        next_msg_to_send_array[i] = NULL;
     } 
 
     /* TODO: Read last known state from disk*/
@@ -662,6 +664,10 @@ void handle_server_update_bundle(server_message *recv_serv_msg,
     for (int idx = 0; idx < num_updates; idx++) {
         if(DEBUG) printf("handling update\n");
         handle_update(update_itr);
+        if (merge_state) {
+            /* TODO: update state of the merge*/
+        }
+ 
         update_itr++;
     }
     return;
@@ -702,7 +708,23 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
     completion_mask |= (1 << sender_server_id);
 
     if (expected_completion_mask == completion_mask) {
+        /* Received all expected start_merge messages*/
         /* TODO: send merging messages */ 
+        for (int idx = 0; idx < num_processes; idx++) {
+            /* Check if responsible for sending updates*/
+            if (server_responsibility_assign[idx] == process_index
+                && server_updates_array[idx] != NULL) {
+                int max_seq = (server_updates_array[idx]->update->lts).server_seq;
+                /* Find oldest update(_node) to send. When sending, will simply 
+                 * udpate next_message_to_send_array to point to next message */
+                update_node *node_itr = server_updates_array[idx];
+                while (node_itr != NULL 
+                       && node_itr->update->lts.server_seq >= max_seq) {
+                    next_msg_to_send_array[idx] = node_itr;
+                    node_itr = node_itr->prev;
+                }
+            }  
+        }
     }
 }
 
@@ -723,6 +745,7 @@ void initiate_merge() {
     merge_state = 1;
     int *max_seq_array = (int *)(serv_msg_buff.payload); 
     for (int idx = 0; idx < num_processes; idx++) {
+        next_msg_to_send_array[idx] = NULL;
         /* TODO: REMEMBER: first index is rightmost bit (idx)*/
         expected_completion_mask |= (server_status[idx] << idx);
         /* Set max known seq for this server */
@@ -1189,13 +1212,17 @@ static void	Read_message() {
 
 	if(Is_regular_mess(service_type)) { // Regular message
         for (int idx = 0; idx < num_groups; idx++) {
-            if (strcmp(target_groups[idx], server_group) == 0) {
+            if (strcmp(target_groups[idx], server_group) == 0
+                && strcmp(sender, User) != 0) {
                 /* The message is from the spread group for servers. */
                 server_message *recv_serv_msg = (server_message *)mess;
                 switch(mess_type) {
                     case 0: // regular update
-                        handle_server_update_bundle(recv_serv_msg,ret);
-                        break;
+                        if (DEBUG) printf("sender: %s\n", sender);
+                        if (check_name_server_equal(sender, User)) {
+                            handle_server_update_bundle(recv_serv_msg,ret);
+                        }
+                       break;
                     case 1:
                         handle_start_merge((int *)(recv_serv_msg->payload), get_group_num_from_name(sender));
                         break;
@@ -1252,6 +1279,11 @@ static void	Read_message() {
                 }
             } else if (!strcmp(sender, lobby_group) 
                         && check_name_server_equal(memb_info.changed_member, User)) {
+                if (DEBUG) {
+                    printf("handle mem change from lobby group for: %s\n",
+                            memb_info.changed_member);
+                }
+                                
                 /*  checks if memb message is from SELF */
                 /* TODO: change in lobby group. Either someone left or joined. */
                 if (Is_caused_join_mess(service_type)) {
@@ -1298,7 +1330,7 @@ static void Usage(int argc, char *argv[])
     
         /* Set username to same as personal spread group*/
         sprintf( User, personal_group);
-
+        if (DEBUG) printf("User: %s\n", User);
         /* Check number of processes */
         if(num_processes > MAX_MEMBERS) {
             perror("mcast: arguments error - too many processes\n");
