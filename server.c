@@ -107,10 +107,11 @@ int main(int argc, char *argv[]) {
     } 
 
     sprintf(file_name, "%d", process_index);
+    strcat(file_name, ".out");
     /* TODO: Read last known state from disk*/
-    if ( access(strcat(file_name, ".out"), R_OK) != -1) {
+    if ( access(file_name, R_OK) != -1) {
 
-        if((fr = fopen(strcat(file_name, ".out"), "rb")) == NULL) {
+        if((fr = fopen(file_name, "rb")) == NULL) {
             perror("fopen failed to open file for reading");
             exit(0);
         }
@@ -672,7 +673,7 @@ update * store_update(update *new_update) {
         }       
 
         /* Write to disk. */
-        if((fd = fopen(strcat(file_name, ".out"), "a")) == NULL) {
+        if((fd = fopen(file_name, "a")) == NULL) {
             perror("fopen failed to open file for writing");
             exit(0);
         }
