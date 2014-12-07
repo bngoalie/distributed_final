@@ -708,6 +708,7 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
         if (should_choose_new_server(expected_max_seqs[idx], seq_array[idx],
                                      server_responsibility_assign[idx], 
                                      sender_server_id)) {
+            if (DEBUG) printf("choose new server\n");
             server_responsibility_assign[idx] = sender_server_id;
             expected_max_seqs[idx] = seq_array[idx];
             if (sender_server_id == process_index) {
@@ -731,6 +732,7 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
             /* Check if responsible for sending updates*/
             if (server_responsibility_assign[idx] == process_index
                 && server_updates_array[idx] != NULL) {
+                if (DEBUG) printf("server is resp for %d\n", idx);
                 /* Find oldest update(_node) to send. When sending, will simply 
                  * udpate next_message_to_send_array to point to next message */
                 update_node *node_itr = server_updates_array[idx];
@@ -757,6 +759,7 @@ void burst_merge_messages() {
     update *update_itr = (update *)&serv_msg_buff;
     int num_in_bundle = 0;
     int upper_bound = sizeof(server_message)/sizeof(update);
+    if (DEBUG) printf("resp for %d in merge\n", num_servers_responsible_for_in_merge);
     while (sent_count < num_servers_responsible_for_in_merge) {
         int inner_itr = 0;
         int all_null = 1;
