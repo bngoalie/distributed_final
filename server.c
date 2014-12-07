@@ -702,6 +702,7 @@ void handle_leave_of_server(int left_server_index) {
 }
 
 void handle_start_merge(int *seq_array, int sender_server_id) {
+    if (DEBUG) printf("handle start merge mes\n");
     /*server_responsibility_assign*/
     for (int idx = 0; idx < num_processes; idx++) {
         if (should_choose_new_server(expected_max_seqs[idx], seq_array[idx],
@@ -870,8 +871,8 @@ void initiate_merge() {
             max_seq_array[idx] = (server_updates_array[idx]->update->lts).server_seq;
             expected_max_seqs[idx] = max_seq_array[idx];
         }
+        if (DEBUG) printf("max_seq_array[%d] = %d\n", idx, max_seq_array[idx]);
         server_responsibility_assign[idx] = process_index; 
-
     }
 
     int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), server_group, 1, 
