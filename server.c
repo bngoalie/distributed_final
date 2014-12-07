@@ -741,6 +741,9 @@ void initiate_merge() {
 }
 
 void handle_client_message(update *client_update, char *sender) {
+    if (merge_state == 1) {
+
+    }
     /* Check if have client */
     client_node *client_itr = &(room_list_head.client_heads[process_index]);
     while (client_itr->next != NULL 
@@ -933,7 +936,6 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
                     /* add this join update to the bundle of updates to send.*/ 
                     memcpy(update_itr, client_itr->join_update, sizeof(update));
                     /* TODO: currently could iterate one byes past end of buff. */
-                    update_itr++;
                     if (++num_updates_itr == upper_bound_updates_per_message) {
                         /* buffer is full, send it*/
                         int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
@@ -947,6 +949,8 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
                         /* reset bundle*/
                         update_itr = (update *)&serv_msg_buff;
                         num_updates_itr = 0;
+                    } else {
+                        update_itr++;
                     }
                 }
                 client_itr = client_itr->next; 
@@ -964,7 +968,6 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
             if (line_itr->append_update != NULL) {
                 /* copy update over to message to send */
                 memcpy(update_itr, line_itr->append_update, sizeof(update));
-                update_itr++;
                 if (++num_updates_itr == upper_bound_updates_per_message) {
                     /* buffer is full, send it*/
                     int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
@@ -978,7 +981,10 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
                     /* reset bundle*/
                     update_itr = (update *)&serv_msg_buff;
                     num_updates_itr = 0;
+                } else {
+                    update_itr++;
                 }
+
                 
                 /* Send likes of this append */
                 liker_node *liker_itr = line_itr->likers_list_head.next;
@@ -1004,6 +1010,8 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
                             update_itr = (update *)&serv_msg_buff;
                             num_updates_itr = 0;
                         }
+                    } else {
+                        update_itr++;
                     }
                     liker_itr = liker_itr->next;
                 }
@@ -1055,7 +1063,6 @@ void handle_client_history(update *client_update, char *client_name) {
             if (line_itr->append_update != NULL) {
                 /* copy update over to message to send */
                 memcpy(update_itr, line_itr->append_update, sizeof(update));
-                update_itr++;
                 if (++num_updates_itr == upper_bound_updates_per_message) {
                     /* buffer is full, send it*/
                     ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
@@ -1069,6 +1076,8 @@ void handle_client_history(update *client_update, char *client_name) {
                     /* reset bundle*/
                     update_itr = (update *)&serv_msg_buff;
                     num_updates_itr = 0;
+                } else {
+                    update_itr++;
                 }
                 
                 /* Send likes of this append */
@@ -1080,7 +1089,6 @@ void handle_client_history(update *client_update, char *client_name) {
                         /* add update to message buff */
                         /* copy update over to message to send */
                         memcpy(update_itr, liker_itr->like_update, sizeof(update));
-                        update_itr++;
                         if (++num_updates_itr == upper_bound_updates_per_message) {
                             /* buffer is full, send it*/
                             int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
@@ -1095,6 +1103,8 @@ void handle_client_history(update *client_update, char *client_name) {
                             update_itr = (update *)&serv_msg_buff;
                             num_updates_itr = 0;
                         }
+                    } else {
+                        update_itr++;
                     }
                     liker_itr = liker_itr->next;
                 }
