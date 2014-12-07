@@ -80,5 +80,7 @@ void handle_client_leave_lobby(char *client_name);
 void handle_client_history(update *client_update, char *client_name);
 void burst_merge_messages();
 int  is_merge_finished();
+void send_local_clients_to_servers();
+
 
 #endif

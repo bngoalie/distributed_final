@@ -62,6 +62,7 @@ int         server_responsibility_assign[MAX_MEMBERS];
 int         expected_max_seqs[MAX_MEMBERS];
 int         self_received_merge_messages;
 int         min_seqs[MAX_MEMBERS];
+int         num_new_servers;
 
 static	void	    Usage( int argc, char *argv[] );
 static  void        Print_help();
@@ -740,6 +741,8 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
                 }
             }  
         }
+        /* We send clients first because don't can't end merge then send clients*/
+        send_local_clients_to_servers(); 
         burst_merge_messages();
     }
 }
@@ -788,10 +791,40 @@ void burst_merge_messages() {
         sent_count++;
     }
     num_servers_responsible_for_in_merge = sent_count; 
-    if (num_servers_responsible_for_in_merge == 0) {
-        if (DEBUG) printf("done sending updates. now send joins\n");
-        /* TODO: spam clients*/
+}
+
+void send_local_clients_to_servers() {
+    char new_groups[num_new_servers][MAX_GROUP_NAME];
+    int group_itr = 0;
+    for(int idx = 0; idx < num_processes; idx++) {
+        if (!prev_server_status[idx]) {
+            /* send to this server*/
+            strcpy(new_groups[group_itr], server_names[idx]);
+            group_itr++;
+        }
     }
+    int bundle_size = 0;
+    update *update_itr = (update *)&serv_msg_buff;
+    client_node *client_itr = room_list_head.client_heads[process_index].next;
+    while(client_itr != NULL) {
+        if(client_itr->join_update != NULL) {
+            /* Send the join to servers */
+            memcpy(update_itr, client_itr->join_update, sizeof(update));
+            update_itr++;
+            bundle_size++;
+        }
+        client_itr = client_itr->next;
+    }
+    int ret = SP_multigroup_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), 
+                                      num_new_servers, 
+                                     (const char (*)[MAX_GROUP_NAME]) new_groups, 
+                                      0, bundle_size*sizeof(update), 
+                                      (char *)&serv_msg_buff);
+    if(ret < 0) {
+        SP_error(ret);
+        Bye();
+    }
+    
 }
 
 int is_merge_finished() {
@@ -1321,9 +1354,9 @@ static void	Read_message() {
             } else if (strcmp(target_groups[idx], personal_group) == 0) {
                 /* The message was sent to the server's personal group (from a client)*/
                 handle_client_message((update *)mess, sender);
-            } else {
-                /* The server should not be receiving regular messages from any other groups
-                 * (i.e. chat room groups) */
+            } else if (strcmp(target_groups[idx], Private_group) == 0) {
+                 /* Assume these messages are from multigroup_multicast */
+                 handle_server_update_bundle((server_message *)mess,ret);
             }
         }	
     } else if(Is_membership_mess(service_type)) {
@@ -1348,11 +1381,13 @@ static void	Read_message() {
                     prev_server_status[idx] = server_status[idx]; 
                     server_status[idx] = 0;
                 }
+                num_new_servers = 0;
                 for (int idx = 0; idx < num_groups; idx++) {
                     server_index = atoi(&(target_groups[idx][SERVER_INDEX_INDEX]));
                     server_status[server_index] = 1;
                     strcpy(server_names[server_index], target_groups[idx]);
                     if (!prev_server_status[server_index]) {
+                        num_new_servers++;
                         merge_case = 1;   
                     }
                 }
