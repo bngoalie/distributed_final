@@ -705,10 +705,12 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
     if (DEBUG) printf("handle start merge mes from server %d\n", sender_server_id);
     /*server_responsibility_assign*/
     for (int idx = 0; idx < num_processes; idx++) {
+        if (DEBUG) printf("compare against server %d with max seq %d\n", server_responsibility_assign[idx], expected_max_seqs[idx]);
         if (should_choose_new_server(expected_max_seqs[idx], seq_array[idx],
                                      server_responsibility_assign[idx], 
                                      sender_server_id)) {
-            if (DEBUG) printf("choose new server\n");
+            if (DEBUG) printf("choose new server, use %d, seq: %d\n",sender_server_id, seq_array[idx]);
+
             server_responsibility_assign[idx] = sender_server_id;
             expected_max_seqs[idx] = seq_array[idx];
             if (sender_server_id == process_index) {
