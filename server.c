@@ -474,7 +474,7 @@ void handle_client_join_update(update *join_update, char *client_name) {
     /* Handle locally, which sends to clients */    
     handle_server_join_update(ret_update_node->update);
     
-    memcpy((update *)&serv_msg_buff, join_update, sizeof(update));
+    memcpy((update *)&serv_msg_buff, ret_update_node->update, sizeof(update));
 
     /* Send new update to servers */
     send_server_message(&serv_msg_buff, sizeof(update)); 
@@ -823,7 +823,8 @@ void handle_client_view(update *client_update, char *sender) {
 }
 
 void handle_client_username(update *client_update, char *sender) {
-    client_node *client_itr = &room_list_head.client_heads[process_index];
+    client_node *client_itr 
+        = &room_list_head.client_heads[client_update->lts.server_id];
     while (client_itr->next != NULL
         && strcmp(client_itr->next->client_group, sender) != 0) {
         client_itr = client_itr->next;
