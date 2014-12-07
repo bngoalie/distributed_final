@@ -728,6 +728,19 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
     }
 }
 
+int is_merge_finished() {
+    for (int idx = 0; idx < num_processes; idx++) {
+        if (server_status[idx] == 1 
+            && server_updates_array[idx] != NULL 
+            && server_updates_array[idx]->update->lts.server_seq < expected_max_seqs[idx]) {
+            /* the current max seq for server idx is lower than expected for 
+             * completion*/
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int should_choose_new_server(int current_max_seq, int new_max_seq, 
                              int current_server_id, int new_server_id) {
     if (new_max_seq > current_max_seq 
