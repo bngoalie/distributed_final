@@ -55,11 +55,14 @@ int main(){
         close_client();
     }
 
+    // Print initial menu and cursor
+    display_menu();
+    printf(CURSOR);
+    fflush(stdout);
+
     // Initialize event handling system (user input only)
     E_init(); 
     E_attach_fd(0, READ_FD, parse_input, 0, NULL, LOW_PRIORITY);
-    printf(CURSOR);
-    fflush(stdout);
     E_handle_events();
 }
 
@@ -100,6 +103,9 @@ void parse_input(){
             break;
         case 'v':   // Display view
             request_view();
+            break;
+        case 'm':   // Display menu
+            display_menu();
             break;
         case 'q':   // Quit 
             close_client();        
@@ -187,8 +193,10 @@ void parse_update(){
         if(!display_view && type != 5){
             update_display();
         }
-        printf(CURSOR);
-        fflush(stdout);
+        if(type != 5){
+            printf(CURSOR);
+            fflush(stdout);
+        }
 
     }else if(Is_membership_mess(service_type)){
         // Handle Spread membership changes
@@ -439,16 +447,16 @@ void connect_to_server(int new_id){
     sp_time     timeout;
     const char  *daemons[5] = {DAEMON1, DAEMON2, DAEMON3, DAEMON4, DAEMON5}; 
    
-    // Disconnect from current server
-    if(connected)
-        SP_disconnect(mbox);
- 
     // Check that id is valid and new
     if(new_id < 0 || new_id > 4)
         printf("Error: invalid server ID (range is 1-5)\n");
     else if (new_id == server_id) 
         printf("Already connected to server %d!\n", server_id+1);
     else{
+        // Disconnect from current server
+        history_mode = false;
+        if(connected)
+            SP_disconnect(mbox);
         // Prepare for possible event handler changes...
         E_exit_events();
         E_init();       
@@ -524,6 +532,7 @@ void disconnect()
     char lobby[MAX_GROUP_NAME];
 
     // Disconnect and clean up vars
+    history_mode = 0;
     clear_lines();
     clear_users();
     connected = 0;
@@ -916,6 +925,25 @@ void update_display(){
         line_itr = line_itr->prev;
     }
     fflush(stdout); 
+}
+
+/* Display menu */
+void display_menu(){
+    // Clear screen
+    system("clear");
+    // Display info for each command
+    printf("CS437 Distributed Systems - Chat Client\n\n");
+    printf("User command menu:\n");
+    printf("u <username>    -   change username (can be done before or after connecting)\n");
+    printf("c <server_id>   -   connect to server of specified number\n");
+    printf("j <room_name>   -   join chat room of specified name\n");
+    printf("a <text>        -   append a line with specified test to current room\n");
+    printf("l <line_num>    -   like the specified line number\n");
+    printf("r <line_num     -   remove a like on the specified line number\n");
+    printf("h               -   display history for current room\n");
+    printf("v               -   display server view\n");
+    printf("m               -   display this menu again\n");
+    printf("q               -   quit the program\n\n");
 }
 
 /* Clear lines data structure */
