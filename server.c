@@ -497,7 +497,7 @@ void handle_client_join_update(update *join_update, char *client_name) {
     memcpy((update *)&serv_msg_buff, ret_update_node, sizeof(update));
 
     /* Send new update to servers */
-    send_server_message(&serv_msg_buff, sizeof(update)); 
+    send_server_message(&serv_msg_buff, sizeof(update), 0); 
 }
 void handle_client_join_lobby(char *client_name) {
     /* We will assume that the client is not in the lobby. 
@@ -545,7 +545,7 @@ void handle_client_leave_lobby(char *client_name) {
         
         memcpy((update *)&serv_msg_buff, new_leave_update, sizeof(update));
         /* Send new update to servers */
-        send_server_message(&serv_msg_buff, sizeof(update)); 
+        send_server_message(&serv_msg_buff, sizeof(update), 0); 
     }
     
     /* Remove client from lobby */
@@ -764,16 +764,13 @@ void burst_merge_messages() {
                 num_in_bundle++;
                 next_msg_to_send_array[inner_itr] 
                     = next_msg_to_send_array[inner_itr]->next;
-                if(next_msg_to_send_array[inner_itr] == NULL) {
-                    
-                } 
             }
             inner_itr++;
             if (inner_itr == num_processes && all_null) {
                 /* check if any left in bundle, then send bundle, then exit */
                 if (num_in_bundle > 0) {
                     send_server_message(&serv_msg_buff, 
-                                           sizeof(update)*num_in_bundle);
+                                           sizeof(update)*num_in_bundle, 1);
                 }
                 num_servers_responsible_for_in_merge = 0; 
                 return;
@@ -784,7 +781,7 @@ void burst_merge_messages() {
         }
         if (num_in_bundle > 0) {
             send_server_message(&serv_msg_buff, 
-                                   sizeof(update)*num_in_bundle);
+                                   sizeof(update)*num_in_bundle, 1);
             num_in_bundle = 0;
         }
         update_itr = (update *)&serv_msg_buff;
@@ -964,7 +961,7 @@ void handle_client_append(update *client_update) {
     handle_update(new_update);
 
     /* send set server_message to server group */
-    send_server_message(&serv_msg_buff, sizeof(update));
+    send_server_message(&serv_msg_buff, sizeof(update), 0);
 
 }
 
@@ -982,12 +979,19 @@ void handle_client_like(update *client_update) {
     handle_update(new_update);
 
     /* send set server_message to server group */
-    send_server_message(&serv_msg_buff, sizeof(update));
+    send_server_message(&serv_msg_buff, sizeof(update), 0);
 }
 
-void send_server_message(server_message *msg_to_send, int size_of_message) {
-    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), server_group, 0,
-                           size_of_message, (char *) msg_to_send);
+void send_server_message(server_message *msg_to_send, int size_of_message, 
+                         int send_to_self) {
+    int ret;
+    if (send_to_self) {
+    ret = SP_multicast(Mbox, FIFO_MESS, server_group, 0,
+                               size_of_message, (char *) msg_to_send);
+    } else {    
+        ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), server_group, 0,
+                               size_of_message, (char *) msg_to_send);
+    }
     if(ret < 0) {
         SP_error(ret);
         Bye();
@@ -1040,7 +1044,7 @@ void handle_client_username(update *client_update, char *sender) {
             printf("sending leave to servers in username\n");
         }
         /* Send new leave update to servers */
-        send_server_message(&serv_msg_buff, sizeof(update));
+        send_server_message(&serv_msg_buff, sizeof(update), 0);
 
         /* create new join update, same logic as leave update above */ 
         ((join_payload *)&new_update->payload)->toggle = 1;        
@@ -1059,7 +1063,7 @@ void handle_client_username(update *client_update, char *sender) {
             printf("sending join to server in username\n");
         }
         /* Send new leave update to servers */
-        send_server_message(&serv_msg_buff, sizeof(update));
+        send_server_message(&serv_msg_buff, sizeof(update), 0);
         if (DEBUG) printf("local seq: %d\n", local_server_seq);
         if (DEBUG) printf("current seq: %d\n", server_updates_array[process_index]->update->lts.server_seq); 
     }
