@@ -366,6 +366,7 @@ void handle_server_join_update(update *join_update) {
         /* He was in a group prior. send a fake leave message to clients */
         update *update_payload = (update *)(server_client_mess_buff.payload);
         memcpy(update_payload, lobby_client_node->join_update, sizeof(update));
+        ((join_payload *)&(update_payload->payload))->toggle = 0;
         char chat_room_group[MAX_GROUP_NAME];
         get_room_group(process_index, lobby_client_node->join_update->chat_room, chat_room_group);
         int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), chat_room_group, 0, sizeof(update), (char *) &server_client_mess_buff);
