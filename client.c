@@ -109,7 +109,7 @@ void parse_input(){
     fflush(stdout);
 }
 
-/* Parse update from server */       // TODO: HANDLE RECEIVING AND DISPLAYING VIEW!!
+/* Parse update from server */
 void parse_update(){
     // Local vars
     membership_info memb_info;
@@ -387,14 +387,25 @@ void process_join(update *join_update){
                 free(tmp->join_update);
                 free(tmp);
                 removed = true;
-            }
+            }else
+                user_itr = user_itr->next;
         }
     }
+    printf("Leaving process_join()\n");
 }
 
 /* Process & display view update */
 void process_view(update *view_update){
+    // Local vars
+    view_payload *payload;
 
+    // Extract & print view
+    payload = (view_payload *)&(view_update->payload);
+    printf("Current view:\n");
+    for(int i = 0; i < 5; i++)
+        if(payload->view[i])
+            printf("server %d\n", i+1);
+    printf("\n"); 
 }
 
 /* Connect to server with given server_id */
@@ -562,50 +573,54 @@ void join_chat_room(char *new_room, bool is_group_name){
     // Ensure client is connected to a server
     if(connected){
         if(username_sent){
-            
-     
-            // Store current room group
-            strcpy(prev_group, room_group);
-         
-            // Join new room group
-            if(is_group_name){
-                strcpy(room_group, new_room);
-                ret = SP_join(mbox, new_room);
-            }else{
-                get_room_group(server_id, new_room, room_group);
-                ret = SP_join(mbox, room_group);
-            }
-            if(ret != 0){
-                // Unsuccessful, revert to previous group
-                SP_error(ret);
-                printf("Error: unable to join group %s - try to avoid special chars and spaces\n", new_room);
-                strcpy(room_group, prev_group);
-            }else{
-                // Successful, leave previous group
-                get_lobby_group(server_id, lobby);
-                if(strcmp(prev_group, lobby)){ // don't leave lobby
-                    SP_leave(mbox, prev_group);
-                    printf("(Left room group %s)\n", prev_group);
+            // Check room name length limit
+            if(strlen(new_room) >= MAX_ROOM_NAME_LENGTH)
+                printf("Room name must be less than %d characters\n",
+                    MAX_ROOM_NAME_LENGTH); 
+            else{
+                // Store current room group
+                strcpy(prev_group, room_group);
+             
+                // Join new room group
+                if(is_group_name){
+                    strcpy(room_group, new_room);
+                    ret = SP_join(mbox, new_room);
+                }else{
+                    get_room_group(server_id, new_room, room_group);
+                    ret = SP_join(mbox, room_group);
                 }
-                // Clear previous lines and users
-                clear_lines();
-                clear_users();
-                strcpy(room_name, new_room);
-                printf("Joined room %s\n", new_room);
-                
-                // Create join update in buffer
-                join_update = (update *)mess;
-                join_update-> type = 2;
-                strcpy(join_update->username, username);
-                strcpy(join_update->chat_room, new_room);
-                payload = (join_payload *)&(join_update->payload);
-                payload->toggle = 1;
-
-                // Send message
-                ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
-                if(ret < 0){
+                if(ret != 0){
+                    // Unsuccessful, revert to previous group
                     SP_error(ret);
-                    close_client();
+                    printf("Error: unable to join group %s - try to avoid special chars and spaces\n", new_room);
+                    strcpy(room_group, prev_group);
+                }else{
+                    // Successful, leave previous group
+                    get_lobby_group(server_id, lobby);
+                    if(strcmp(prev_group, lobby)){ // don't leave lobby
+                        SP_leave(mbox, prev_group);
+                        printf("(Left room group %s)\n", prev_group);
+                    }
+                    // Clear previous lines and users
+                    clear_lines();
+                    clear_users();
+                    strcpy(room_name, new_room);
+                    printf("Joined room %s\n", new_room);
+                    
+                    // Create join update in buffer
+                    join_update = (update *)mess;
+                    join_update-> type = 2;
+                    strcpy(join_update->username, username);
+                    strcpy(join_update->chat_room, new_room);
+                    payload = (join_payload *)&(join_update->payload);
+                    payload->toggle = 1;
+
+                    // Send message
+                    ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
+                    if(ret < 0){
+                        SP_error(ret);
+                        close_client();
+                    }
                 }
             }
         }else
@@ -767,18 +782,23 @@ void request_view(){
     update  *view_request;
     int     ret;
 
-    // Create view request update
-    view_request = (update *)mess;
-    view_request->type = 4;
-    strcpy(view_request->username, username);
-    strcpy(view_request->chat_room, room_name);
-    // No payload for this message type
+    // Confirm client is connected
+    if(!connected)
+        printf("Can't request view if not connected to a server!\n");
+    else{
+        // Create view request update
+        view_request = (update *)mess;
+        view_request->type = 4;
+        strcpy(view_request->username, username);
+        strcpy(view_request->chat_room, room_name);
+        // No payload for this message type
 
-    // Send to server
-    ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
-    if(ret < 0){
-        SP_error(ret);
-        close_client();
+        // Send to server
+        ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
+        if(ret < 0){
+            SP_error(ret);
+            close_client();
+        }
     }
 }
 
