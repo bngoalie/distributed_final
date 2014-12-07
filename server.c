@@ -1153,6 +1153,9 @@ void handle_client_history(update *client_update, char *client_name) {
     }
 }
 
+//void process_client_update_queue
+
+
 static void	Read_message() {
     /* Local vars */
     static char	    mess[MAX_MESS_LEN];
