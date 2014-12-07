@@ -937,7 +937,7 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
         perror("can't send state of non-existant room\n");
         Bye();
     }
-    
+    if (DEBUG) printf("send state to client: have target room\n");
     int upper_bound_updates_per_message = sizeof(server_client_mess)/sizeof(update);
     update *update_itr = (update *)&serv_msg_buff;    
     int     num_updates_itr = 0;
@@ -977,6 +977,7 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
             }
         } 
     }
+    if (DEBUG) printf("send state to client: calc last 25 appends\n");
     /*only sending last 25 messages*/
     line_node *line_itr = target_room->lines_list_tail; 
     if (line_itr != NULL) {
@@ -1006,6 +1007,7 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
                 }
 
                 
+                if (DEBUG) printf("send state to client: find likes\n");
                 /* Send likes of this append */
                 liker_node *liker_itr = line_itr->likers_list_head.next;
                 while (liker_itr != NULL) {
@@ -1038,16 +1040,16 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
             }    
             line_itr = line_itr->next;
         }
-        /* if the bundle has updates to be sent, send the bundle */
-        if (num_updates_itr > 0) {
-            int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
-                                   client_name, 0, 
-                                   num_updates_itr*sizeof(update),
-                                   (char *) &serv_msg_buff);
-            if(ret < 0) {
-                SP_error(ret);
-                Bye();
-            }
+    }
+    if (DEBUG) printf("/* if the bundle has updates to be sent, send the bundle */\n");
+    if (num_updates_itr > 0) {
+        int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+                               client_name, 0, 
+                               num_updates_itr*sizeof(update),
+                               (char *) &serv_msg_buff);
+        if(ret < 0) {
+            SP_error(ret);
+            Bye();
         }
     }
 
@@ -1154,8 +1156,11 @@ void handle_client_history(update *client_update, char *client_name) {
         Bye();
     }
 }
-
-//void process_client_update_queue
+/*
+void process_client_update_queue() {
+    
+    
+}*/
 
 
 static void	Read_message() {
