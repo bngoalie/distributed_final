@@ -862,7 +862,9 @@ void initiate_merge() {
         next_msg_to_send_array[idx] = NULL;
         min_seqs[idx] = INT_MAX;
         /* TODO: REMEMBER: first index is rightmost bit (idx)*/
-        expected_completion_mask |= (server_status[idx] << idx);
+        if (idx != process_index) {
+            expected_completion_mask |= (server_status[idx] << idx);
+        }
         /* Set max known seq for this server */
         max_seq_array[idx] = 0;
         expected_max_seqs[idx] = 0;
