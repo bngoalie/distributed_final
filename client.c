@@ -613,7 +613,9 @@ void join_chat_room(char *new_room, bool is_group_name){
             // Check room name length limit
             if(strlen(new_room) >= MAX_ROOM_NAME_LENGTH)
                 printf("Room name must be less than %d characters\n",
-                    MAX_ROOM_NAME_LENGTH); 
+                    MAX_ROOM_NAME_LENGTH);
+            else if(!strcmp(new_room, room_name))
+                printf("Error: already in room %s!\n", new_room);
             else{
                 // Store current room group
                 strcpy(prev_group, room_group);
@@ -845,19 +847,23 @@ void request_history(){
     // Local vars
     update *history_request;
     int ret;
+    
+    // Check that we're in a (non-lobby) room
+    if(room_group[0] == 's'){
+        // Create history request message
+        history_request = (update *)mess;
+        history_request->type = 5;
+        strcpy(history_request->username, username);
+        strcpy(history_request->chat_room, room_name);
 
-    // Create history request message
-    history_request = (update *)mess;
-    history_request->type = 5;
-    strcpy(history_request->username, username);
-    strcpy(history_request->chat_room, room_name);
-
-    // Send request to server
-    ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
-    if(ret < 0){
-        SP_error(ret);
-        close_client();
-    }
+        // Send request to server
+        ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
+        if(ret < 0){
+            SP_error(ret);
+            close_client();
+        }
+    }else
+        printf("Error: need to be in a chat room to request history.\n");
 }
 
 /* Update room display */
@@ -937,7 +943,7 @@ void display_menu(){
     printf("u <username>    -   change username (can be done before or after connecting)\n");
     printf("c <server_id>   -   connect to server of specified number\n");
     printf("j <room_name>   -   join chat room of specified name\n");
-    printf("a <text>        -   append a line with specified test to current room\n");
+    printf("a <text>        -   append a line with specified text to current room\n");
     printf("l <line_num>    -   like the specified line number\n");
     printf("r <line_num     -   remove a like on the specified line number\n");
     printf("h               -   display history for current room\n");
