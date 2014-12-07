@@ -742,7 +742,7 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
                 while (node_itr != NULL 
                        && node_itr->update->lts.server_seq >= min_seqs[idx]) {
                     next_msg_to_send_array[idx] = node_itr;
-                    node_itr = node_itr->prev;
+                    node_itr = node_itr->next;
                 }
             }  
         }
@@ -774,7 +774,7 @@ void burst_merge_messages() {
                 update_itr++;
                 num_in_bundle++;
                 next_msg_to_send_array[inner_itr] 
-                    = next_msg_to_send_array[inner_itr]->next;
+                    = next_msg_to_send_array[inner_itr]->prev;
             }
             inner_itr++;
             if (inner_itr == num_processes && all_null) {
