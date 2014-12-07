@@ -880,7 +880,7 @@ void handle_client_username(update *client_update, char *sender) {
         }
         /* Send new leave update to servers */
         send_server_message(&serv_msg_buff, sizeof(update));
-
+        if (DEBUG) printf("local seq: %d\n", local_server_seq);
         if (DEBUG) printf("current seq: %d\n", server_updates_array[process_index]->update->lts.server_seq); 
     }
 
