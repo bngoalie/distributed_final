@@ -214,6 +214,7 @@ void parse_update(){
                 if(!strcmp(member, server)){
                     printf("Error: lost connection with server %d\n", server_id+1);
                     printf("Please try reconnecting or connecting to a different server.\n");
+                    disconnect();
                     printf(CURSOR);
                     fflush(stdout);
                 } 
