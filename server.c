@@ -945,6 +945,7 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
     client_node *client_itr = NULL;
     for (int idx = 0; idx < MAX_MEMBERS; idx++) {
         if (server_status[idx] == 1) {
+            if (DEBUG) printf("send join updates from server_id %d\n", idx);
             /*if the list of clients is from a server in our partition.*/
             client_itr = (target_room->client_heads[idx]).next;
             /* Loop through clients in our partition, send join updates. */
