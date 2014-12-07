@@ -756,7 +756,10 @@ void burst_merge_messages() {
                 update_itr++;
                 num_in_bundle++;
                 next_msg_to_send_array[inner_itr] 
-                    = next_msg_to_send_array[inner_itr]->next; 
+                    = next_msg_to_send_array[inner_itr]->next;
+                if(next_msg_to_send_array[inner_itr] == NULL) {
+                    
+                } 
             }
             inner_itr++;
             if (inner_itr == num_processes && all_null) {
@@ -765,6 +768,7 @@ void burst_merge_messages() {
                     send_server_message(&serv_msg_buff, 
                                            sizeof(update)*num_in_bundle);
                 }
+                num_servers_responsible_for_in_merge = 0; 
                 return;
             } else if (inner_itr == num_processes) {
                 inner_itr = 0;
@@ -779,6 +783,7 @@ void burst_merge_messages() {
         update_itr = (update *)&serv_msg_buff;
         sent_count++;
     }
+    num_servers_responsible_for_in_merge = sent_count; 
 }
 
 int is_merge_finished() {
@@ -1297,6 +1302,7 @@ static void	Read_message() {
                                     == num_servers_responsible_for_in_merge) {
                                 /* sent x messages, received x of them, send more */
                                 burst_merge_messages();
+                                self_received_merge_messages = 0;
                             }
                         }
                        break;
