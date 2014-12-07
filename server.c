@@ -120,6 +120,8 @@ int main(int argc, char *argv[]) {
         } 
        
         fclose(fr);
+    } else if (DEBUG) {
+        printf("could not find file\n");
     }
     
     /* Connect to spread daemon */
