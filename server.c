@@ -676,6 +676,7 @@ void handle_server_update_bundle(server_message *recv_serv_msg,
         update_itr++;
     }
     if (merge_state && is_merge_finished()) {
+        if (DEBUG) printf("exit merge state\n");
         merge_state = 0;
         /* clear queue of client updates*/
         process_client_update_queue();
@@ -1060,7 +1061,7 @@ void handle_client_username(update *client_update, char *sender) {
             perror("unable to malloc new update for leave for changing username\n");
             Bye();
         }
-        handle_server_join_update(ret_update_node); 
+       handle_server_join_update(ret_update_node); 
         if (DEBUG) {
             printf("sending join to server in username\n");
         }
