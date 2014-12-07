@@ -89,6 +89,9 @@ void send_username_update();
 /* Update room display */
 void update_display();
 
+/* Display menu */
+void display_menu();
+
 /* Clear lines data structure */
 void clear_lines();
 

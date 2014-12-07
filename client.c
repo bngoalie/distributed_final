@@ -7,35 +7,31 @@
  * Johns Hopkins University
  */
 
-/*
- * Task List:
- * - TODO: History request AND receiving/displaying
- * - TODO: Put most printf statements in ifdef DEFINE blocks??
- * - TODO: TEST EVERYTHING
- */
-
 #include "client.h"
 #define DEBUG 0
 
 /* Globals */
 // Spread and connectivity globals
-char        username[MAX_USERNAME_LENGTH]; 
-char        private_group[MAX_GROUP_NAME]; 
-char        room_group[MAX_GROUP_NAME];
-char        server_group[MAX_GROUP_NAME];
-char        room_name[MAX_ROOM_NAME_LENGTH];
-bool        connected;
-bool        username_sent;
-bool        server_present;
-int         server_id;
-mailbox     mbox;
+char        *mess;                              // Message buffer
+char        username[MAX_USERNAME_LENGTH];      // Username array
+char        private_group[MAX_GROUP_NAME];      // Client private group array
+char        room_group[MAX_GROUP_NAME];         // Chat room group array
+char        room_name[MAX_ROOM_NAME_LENGTH];    // Chat room name array
+char        server_group[MAX_GROUP_NAME];       // Server (send) group array
+bool        connected;                          // Connected indicator
+bool        username_sent;                      // Username sent indicator
+bool        server_present;                     // Server present indicator
+bool        history_mode;                       // History mode indicator
+int         server_id;                          // Current server ID
+mailbox     mbox;                               // Spread mailbox
 // Room data structures globals
 line_node   lines_list_head;    // Sentinel head, next points to newest line
 line_node   *lines_list_tail;   // Tail pointer to oldest line
+line_node   history_head;       // Sentinel head for history
+line_node   *history_tail;      // Tail pointer for history
 client_node client_list_head;   // Sentinel head, next points to user (unordered)
-int         num_lines;          // Total number of lines (up to 25 normally)
-// Message buffer
-char        *mess;
+int         num_lines;          // Total number of lines (up to 25)
+int         history_lines;      // Lotal number of history lines
 
 /* Main */
 int main(){
@@ -43,6 +39,7 @@ int main(){
     connected = false;
     username_sent = false;
     server_present = false;
+    history_mode = false;
     room_group[0] = 0;
     room_name[0] = 0;
     username[0] = 0;
@@ -50,15 +47,22 @@ int main(){
     server_id = -1;
     lines_list_tail = NULL;
     client_list_head.next = NULL;
+    history_tail = NULL;
+    history_head.next = NULL;
+    // Malloc message buffer
     if((mess = malloc(sizeof(server_client_mess))) == NULL){
         printf("Failed to malloc message buffer\n");
         close_client();
     }
+
+    // Print initial menu and cursor
+    display_menu();
+    printf(CURSOR);
+    fflush(stdout);
+
     // Initialize event handling system (user input only)
     E_init(); 
     E_attach_fd(0, READ_FD, parse_input, 0, NULL, LOW_PRIORITY);
-    printf(CURSOR);
-    fflush(stdout);
     E_handle_events();
 }
 
@@ -100,6 +104,9 @@ void parse_input(){
         case 'v':   // Display view
             request_view();
             break;
+        case 'm':   // Display menu
+            display_menu();
+            break;
         case 'q':   // Quit 
             close_client();        
             break;
@@ -128,7 +135,7 @@ void parse_update(){
     int     service_type;
     int16   mess_type;
     int     endian_mismatch;
-    int     ret;
+    int     ret, type;
 
     // Receive message   
     display_view = false;
@@ -152,10 +159,11 @@ void parse_update(){
         // Unpack update(s)
         new_update = ((update *)(((server_client_mess *)mess)->payload));
         for(unsigned int i = 0; i < (ret/sizeof(update)); i++){
+            type = new_update->type;
             if(DEBUG)
                 printf("Received update of type %d from server for username %s and room %s\n",
                     new_update->type, new_update->username, new_update->chat_room);
-            switch(new_update->type){
+            switch(type){
                 case 0: // Append
                     process_append(new_update);
                     break;
@@ -164,26 +172,34 @@ void parse_update(){
                     break;
                 case 2: // Join
                     process_join(new_update);
-                    break; 
-                case 4: // View (type 3 not handled by client)
+                    break;
+                // Case 3 is not handled by client 
+                case 4: // View 
                     display_view = true;
                     process_view(new_update);
                     break;
+                case 5: // History
+                    if(history_mode)
+                        clear_lines();
+                    history_mode = !history_mode; // toggle mode
+                    break;
                 default:
-                    printf("Error: received unknown update type!\n");
+                    printf("Error: received unknown update type %d.\n", new_update->type);
                     break;
             }
-            new_update++;
+            new_update++; // increment to next update it bundle
         }
         // Refresh Display
-        if(!display_view){
+        if(!display_view && type != 5){
             update_display();
         }
-        printf(CURSOR);
-        fflush(stdout);
+        if(type != 5){
+            printf(CURSOR);
+            fflush(stdout);
+        }
 
     }else if(Is_membership_mess(service_type)){
-        // Handle membership changes
+        // Handle Spread membership changes
         // More specifically, detect loss of server, notify user
         ret = SP_get_memb_info(mess, service_type, &memb_info);
         if(ret < 0){
@@ -202,8 +218,8 @@ void parse_update(){
                     fflush(stdout);
                 } 
             }else if(Is_caused_network_mess(service_type)){
-                // TODO: Check for client/server partition?
-                // We might not need to handle this client-side
+                // No need to check for client/server partition
+                // We're directly connecting to target daemon
             }
         }
         
@@ -214,15 +230,25 @@ void parse_update(){
 /* Process append update from server */
 void process_append(update *append_update){
     // Local vars
-    line_node   *line_list_itr = &lines_list_head;
+    line_node   *line_list_itr;
     line_node   *tmp;
     liker_node  *like_list_itr;
     liker_node  *tmp2;
-    int         itr_lines = 0; 
+    int         itr_lines = 0;
+    int         line_max; 
     update      *new_update;
 
     if(DEBUG)
         printf("Append message %s\n", (char *)&(append_update->payload));
+
+    // Set iterator and line limit based on history mode
+    if(history_mode){
+        line_max = 99999999;
+        line_list_itr = &history_head;
+    }else{
+        line_max = 25;
+        line_list_itr = &lines_list_head;
+    }
 
     // Iterate through lines to find insertion point, if one exists
     while(line_list_itr->next != NULL &&
@@ -231,7 +257,7 @@ void process_append(update *append_update){
         itr_lines++;
     }
     // Insert line if doesn't already exist and isn't too old (25+ lines)
-    if((line_list_itr->next == NULL && itr_lines < 25) ||
+    if((line_list_itr->next == NULL && itr_lines < line_max) ||
             compare_lts(append_update->lts, line_list_itr->next->lts) != 0){
         if((tmp=malloc(sizeof(*line_list_itr))) == NULL){ // malloc new node
             printf("Error: failed to malloc line_node\n");
@@ -243,8 +269,12 @@ void process_append(update *append_update){
         // Link adjacent nodes to new node
         if(tmp->next != NULL)
             tmp->next->prev = tmp;
-        else
-            lines_list_tail = tmp;
+        else{
+            if(history_mode)
+                history_tail = tmp;
+            else
+                lines_list_tail = tmp;
+        }
         line_list_itr->next = tmp;
         // Set timestamp
         tmp->lts = append_update->lts;
@@ -258,7 +288,7 @@ void process_append(update *append_update){
         tmp->likers_list_head.next = NULL;  // Need to set pointers to NULL!!
        
         // Increment total number of lines and check limit
-        if(++num_lines > 25){
+        if(!history_mode && ++num_lines > 25){
             // Remove 26th line
             tmp = lines_list_tail;
             lines_list_tail = lines_list_tail->prev;
@@ -279,7 +309,7 @@ void process_append(update *append_update){
     }
 }
 
-/* Process like update from server TODO: DOUBLE CHECK THIS LOGIC PLEASE */
+/* Process like update from server */
 void process_like(update *like_update){
     // Local vars
     like_payload    *payload;
@@ -294,8 +324,14 @@ void process_like(update *like_update){
     if(DEBUG)
         printf("Toggle value: %s\n", payload->toggle == 1 ? "like" : "unlike");
 
+    // Set iterator according to history mode
+    if(history_mode)
+        line_itr = history_tail;
+    else
+        line_itr = lines_list_tail; // iterator starts at oldest message
+    
+
     // Find relevant line (if exists) via LTS
-    line_itr = lines_list_tail; // iterator starts at oldest message
     line_found = false;
     while(line_itr != NULL && !line_found){ 
         if(!compare_lts(line_itr->lts, payload->lts)) 
@@ -411,16 +447,16 @@ void connect_to_server(int new_id){
     sp_time     timeout;
     const char  *daemons[5] = {DAEMON1, DAEMON2, DAEMON3, DAEMON4, DAEMON5}; 
    
-    // Disconnect from current server
-    if(connected)
-        SP_disconnect(mbox);
- 
     // Check that id is valid and new
     if(new_id < 0 || new_id > 4)
         printf("Error: invalid server ID (range is 1-5)\n");
     else if (new_id == server_id) 
         printf("Already connected to server %d!\n", server_id+1);
     else{
+        // Disconnect from current server
+        history_mode = false;
+        if(connected)
+            SP_disconnect(mbox);
         // Prepare for possible event handler changes...
         E_exit_events();
         E_init();       
@@ -459,11 +495,6 @@ void connect_to_server(int new_id){
                 E_handle_events();
                 // Progress or revert, depending on server presence
                 if(server_present){
-                    // If previously connected, rejoin previous group
-                    //if(connected){
-                    //    if(username_sent && room_group[0] != 'l')
-                    //        join_chat_room(room_group, true); 
-                    //}
                     // Indicate success
                     get_single_server_group(server_id, server_group); // get server public group
                     connected = true;
@@ -501,6 +532,7 @@ void disconnect()
     char lobby[MAX_GROUP_NAME];
 
     // Disconnect and clean up vars
+    history_mode = 0;
     clear_lines();
     clear_users();
     connected = 0;
@@ -808,23 +840,24 @@ void request_view(){
     }
 }
 
-/* Request history TODO: Implement*/
+/* Request history */
 void request_history(){
     // Local vars
-    //update *history_request;
+    update *history_request;
+    int ret;
 
-    // Send history request message to server
-    //history_request = (update *)mess;
+    // Create history request message
+    history_request = (update *)mess;
+    history_request->type = 5;
+    strcpy(history_request->username, username);
+    strcpy(history_request->chat_room, room_name);
 
-    // Clear everything
-    
-    // Set flag indicating NOT to remove old messages
-    
-    // TODO: implement logic in other functions to not clear if flag set
-    
-    // TODO: after end of history is received (special update?), clear flag
-    
-    // Immediately return to normal behavior???
+    // Send request to server
+    ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
+    if(ret < 0){
+        SP_error(ret);
+        close_client();
+    }
 }
 
 /* Update room display */
@@ -832,6 +865,7 @@ void update_display(){
     // Local vars
     client_node     *user_itr;
     line_node       *line_itr;
+    line_node       *itr_limiter;
     liker_node      *like_itr;
     char            buff[MAX_USERNAME_LENGTH+5];
     int             likes, line_num;
@@ -851,13 +885,20 @@ void update_display(){
             printf(", ");
         user_itr = user_itr->next;
     }
-    printf("\n\n");
+    printf("\n");
     
-    // Iterate through lines data structure
-    line_itr = lines_list_tail;
-    line_num = 0;
+    // Set iterator and limiter based on history mode
+    if(history_mode){
+        line_itr = history_tail;
+        itr_limiter = &history_head;
+    }else{
+        itr_limiter = &lines_list_head;
+        line_itr = lines_list_tail;
+    }
 
-    while(line_itr != NULL && line_itr != &lines_list_head){
+    // Iterate through lines data structure
+    line_num = 0;
+    while(line_itr != NULL && line_itr != itr_limiter){
         // Increment and print line number
         printf("%6d ", ++line_num);
         fflush(stdout); 
@@ -883,9 +924,26 @@ void update_display(){
             printf("\n");
         line_itr = line_itr->prev;
     }
-    printf("\n");
     fflush(stdout); 
-    // TODO: Possibly display recent status strings at bottom... 
+}
+
+/* Display menu */
+void display_menu(){
+    // Clear screen
+    system("clear");
+    // Display info for each command
+    printf("CS437 Distributed Systems - Chat Client\n\n");
+    printf("User command menu:\n");
+    printf("u <username>    -   change username (can be done before or after connecting)\n");
+    printf("c <server_id>   -   connect to server of specified number\n");
+    printf("j <room_name>   -   join chat room of specified name\n");
+    printf("a <text>        -   append a line with specified test to current room\n");
+    printf("l <line_num>    -   like the specified line number\n");
+    printf("r <line_num     -   remove a like on the specified line number\n");
+    printf("h               -   display history for current room\n");
+    printf("v               -   display server view\n");
+    printf("m               -   display this menu again\n");
+    printf("q               -   quit the program\n\n");
 }
 
 /* Clear lines data structure */
@@ -896,8 +954,13 @@ void clear_lines(){
     liker_node  *like_itr;
     liker_node  *tmp2;
 
+    // Set iterators based on history mode
+    if(history_mode)
+        line_itr = history_head.next;
+    else
+        line_itr = lines_list_head.next;
+    
     // Iterate through lines, free
-    line_itr = lines_list_head.next;
     while(line_itr != NULL){
         free(line_itr->append_update);
 
@@ -913,10 +976,16 @@ void clear_lines(){
         free(tmp);
     }
     
-    // Clear globals
-    lines_list_head.next = NULL;
-    lines_list_tail = NULL;
-    num_lines = 0; 
+    // Clear globals based on history mode
+    if(history_mode){
+        history_head.next = NULL;
+        history_tail = NULL;
+        history_lines = 0;
+    }else{
+        lines_list_head.next = NULL;
+        lines_list_tail = NULL; 
+        num_lines = 0;
+    }
 }
 
 /* Clear users data structure  */
