@@ -110,20 +110,15 @@ int main(int argc, char *argv[]) {
     /* TODO: Read last known state from disk*/
     if ( access(file_name, R_OK) != -1) {
 
-        if((fr = fopen(strcat(file_name, ".out"), "r")) == NULL) {
+        if((fr = fopen(strcat(file_name, ".out"), "rb")) == NULL) {
             perror("fopen failed to open file for reading");
             exit(0);
         }
-
-        char *line = NULL;
-        ssize_t read;
-        size_t len = 0;
-        while ((read = getline(&line, &len, fr)) != -1) {
-            handle_update((update *)line);        
-        }
-        if (line != NULL) {
-            free(line);
-        }
+        update update_buffer;
+        while (fread(&update_buffer, sizeof(update), 1, fr) > 0) {
+            handle_update(&update_buffer);       
+        } 
+       
         fclose(fr);
     }
     
@@ -678,7 +673,7 @@ update * store_update(update *new_update) {
             perror("fopen failed to open file for writing");
             exit(0);
         }
-        fprintf(fd, "%s", (char *)new_node->update);
+        fwrite(new_node->update, sizeof(update), 1, fd);
         if (fd != NULL) {
             fclose(fd);
             fd = NULL;
