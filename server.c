@@ -677,7 +677,8 @@ void handle_server_update_bundle(server_message *recv_serv_msg,
     }
     if (merge_state && is_merge_finished()) {
         merge_state = 0;
-        /* TODO: clear queue of client updates*/
+        /* clear queue of client updates*/
+        process_client_update_queue();
     }
     return;
 }
@@ -888,6 +889,7 @@ void handle_client_message(update *client_update, char *sender) {
             perror("error mallocing update or node for queueing client update\n");
             Bye();
         }
+        strcpy(new_update_node->client_name, sender);
         new_update_node->next = NULL;
         memcpy(new_update_node->update, client_update, sizeof(update));
         if (client_update_queue_tail == NULL) {
@@ -1297,11 +1299,16 @@ void handle_client_history(update *client_update, char *client_name) {
         Bye();
     }
 }
-/*
+
 void process_client_update_queue() {
-    
-    
-}*/
+    update_node *tmp = NULL;
+    while (client_update_queue_head!= NULL) {
+        handle_client_message(client_update_queue_head->update, client_update_queue_head->client_name);
+        tmp = client_update_queue_head;
+        client_update_queue_head = client_update_queue_head->next;
+        free(tmp); 
+    }    
+}
 
 
 static void	Read_message() {
