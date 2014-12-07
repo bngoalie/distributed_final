@@ -734,7 +734,7 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
             /* Check if responsible for sending updates*/
             if (server_responsibility_assign[idx] == process_index
                 && server_updates_array[idx] != NULL) {
-                if (DEBUG) printf("server is resp for %d\n", idx);
+                if (DEBUG) printf("server is resp for id %d\n", idx);
                 /* Find oldest update(_node) to send. When sending, will simply 
                  * udpate next_message_to_send_array to point to next message */
                 update_node *node_itr = server_updates_array[idx];
@@ -860,7 +860,7 @@ void initiate_merge() {
     expected_completion_mask = 0;
     self_received_merge_messages = 0;
     completion_mask = 0;
-    num_servers_responsible_for_in_merge = 0;
+    num_servers_responsible_for_in_merge = 1;
     merge_state = 1;
     int *max_seq_array = (int *)(serv_msg_buff.payload); 
     for (int idx = 0; idx < num_processes; idx++) {
