@@ -712,7 +712,7 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
                                      sender_server_id)) {
             server_responsibility_assign[idx] = sender_server_id;
             expected_max_seqs[idx] = seq_array[idx];
-            if (idx == process_index) {
+            if (sender_server_id == process_index) {
                 num_servers_responsible_for_in_merge++;
             } 
         }
@@ -1129,9 +1129,11 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
             line_itr = line_itr->prev;
         }
         while (line_itr != NULL) {
+            if (DEBUG) printf("new line_itr\n");
             if (line_itr->append_update != NULL) {
                 /* copy update over to message to send */
                 memcpy(update_itr, line_itr->append_update, sizeof(update));
+                if (DEBUG) printf("memcpy line_itr\n");
                 if (++num_updates_itr == upper_bound_updates_per_message) {
                     /* buffer is full, send it*/
                     int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
@@ -1156,6 +1158,7 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
                 while (liker_itr != NULL) {
                     if (liker_itr->like_update != NULL 
                         && ((like_payload *)&liker_itr->like_update->payload)->toggle){
+                        if (DEBUG) printf("process like_itr\n");
                         /* This like node and a like, not unlike, update */
                         /* add update to message buff */
                         /* copy update over to message to send */
