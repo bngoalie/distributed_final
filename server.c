@@ -15,7 +15,7 @@
 #include <string.h>
 #include "support.h"
 #include "server.h"
-
+#include <limits.h>
 
 #define MAX_GROUPS      MAX_MEMBERS
 #define DEBUG           1
@@ -46,6 +46,8 @@ server_message serv_msg_buff;
 update sending_update_buff;
 update_node *client_update_queue_head;
 update_node *client_update_queue_tail;
+update_node *merge_update_queue_head;
+update_node *merge_update_queue_tail;
 update_node *next_msg_to_send_array[MAX_MEMBERS];
 char        server_names[MAX_MEMBERS][MAX_GROUP_NAME];
 int         server_status[MAX_MEMBERS];
@@ -58,6 +60,8 @@ int         completion_mask;
 int         num_servers_responsible_for_in_merge;
 int         server_responsibility_assign[MAX_MEMBERS];
 int         expected_max_seqs[MAX_MEMBERS];
+int         self_received_merge_messages;
+int         min_seqs[MAX_MEMBERS];
 
 static	void	    Usage( int argc, char *argv[] );
 static  void        Print_help();
@@ -702,29 +706,78 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
                                      sender_server_id)) {
             server_responsibility_assign[idx] = sender_server_id;
             expected_max_seqs[idx] = seq_array[idx];
+            if (idx == process_index) {
+                num_servers_responsible_for_in_merge++;
+            } 
+        }
+        if (seq_array[idx] < min_seqs[idx]) {
+            min_seqs[idx] = seq_array[idx];
         }
     }
     
     completion_mask |= (1 << sender_server_id);
 
     if (expected_completion_mask == completion_mask) {
+        /* Set merge state to expect updates, not start messages */
+        merge_state = 2;
         /* Received all expected start_merge messages*/
         /* TODO: send merging messages */ 
         for (int idx = 0; idx < num_processes; idx++) {
             /* Check if responsible for sending updates*/
             if (server_responsibility_assign[idx] == process_index
                 && server_updates_array[idx] != NULL) {
-                int max_seq = (server_updates_array[idx]->update->lts).server_seq;
                 /* Find oldest update(_node) to send. When sending, will simply 
                  * udpate next_message_to_send_array to point to next message */
                 update_node *node_itr = server_updates_array[idx];
                 while (node_itr != NULL 
-                       && node_itr->update->lts.server_seq >= max_seq) {
+                       && node_itr->update->lts.server_seq >= min_seqs[idx]) {
                     next_msg_to_send_array[idx] = node_itr;
                     node_itr = node_itr->prev;
                 }
             }  
         }
+        burst_merge_messages();
+    }
+}
+
+void burst_merge_messages() {
+    int sent_count = 0;
+    update *update_itr = (update *)&serv_msg_buff;
+    int num_in_bundle = 0;
+    int upper_bound = sizeof(server_message)/sizeof(update);
+    while (sent_count < num_servers_responsible_for_in_merge) {
+        int inner_itr = 0;
+        int all_null = 1;
+        while (num_in_bundle < upper_bound) {
+            if (next_msg_to_send_array[inner_itr] != NULL) {
+                all_null = 0;
+                memcpy(update_itr, next_msg_to_send_array[inner_itr]->update, 
+                       sizeof(update));
+                update_itr++;
+                num_in_bundle++;
+                next_msg_to_send_array[inner_itr] 
+                    = next_msg_to_send_array[inner_itr]->next; 
+            }
+            inner_itr++;
+            if (inner_itr == num_processes && all_null) {
+                /* check if any left in bundle, then send bundle, then exit */
+                if (num_in_bundle > 0) {
+                    send_server_message(&serv_msg_buff, 
+                                           sizeof(update)*num_in_bundle);
+                }
+                return;
+            } else if (inner_itr == num_processes) {
+                inner_itr = 0;
+                all_null = 1;
+            }
+        }
+        if (num_in_bundle > 0) {
+            send_server_message(&serv_msg_buff, 
+                                   sizeof(update)*num_in_bundle);
+            num_in_bundle = 0;
+        }
+        update_itr = (update *)&serv_msg_buff;
+        sent_count++;
     }
 }
 
@@ -752,6 +805,7 @@ int should_choose_new_server(int current_max_seq, int new_max_seq,
 
 void initiate_merge() {
     expected_completion_mask = 0;
+    self_received_merge_messages = 0;
     completion_mask = 1;
     completion_mask <<= process_index;
     num_servers_responsible_for_in_merge = 0;
@@ -759,6 +813,7 @@ void initiate_merge() {
     int *max_seq_array = (int *)(serv_msg_buff.payload); 
     for (int idx = 0; idx < num_processes; idx++) {
         next_msg_to_send_array[idx] = NULL;
+        min_seqs[idx] = INT_MAX;
         /* TODO: REMEMBER: first index is rightmost bit (idx)*/
         expected_completion_mask |= (server_status[idx] << idx);
         /* Set max known seq for this server */
@@ -1231,9 +1286,18 @@ static void	Read_message() {
                 server_message *recv_serv_msg = (server_message *)mess;
                 switch(mess_type) {
                     case 0: // regular update
+                        /* TODO: if (merge_state !=2) run this code, otherwise, queue merge updates */
                         if (DEBUG) printf("sender: %s\n", sender);
                         if (check_name_server_equal(sender, User)) {
                             handle_server_update_bundle(recv_serv_msg,ret);
+                        } else if (merge_state == 2){    
+                            if (DEBUG) printf("received merge message from self\n");
+                            self_received_merge_messages++;
+                            if (self_received_merge_messages 
+                                    == num_servers_responsible_for_in_merge) {
+                                /* sent x messages, received x of them, send more */
+                                burst_merge_messages();
+                            }
                         }
                        break;
                     case 1:
