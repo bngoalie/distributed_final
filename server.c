@@ -44,6 +44,7 @@ update_node *update_list_tail;
 update_node *server_updates_array[MAX_MEMBERS];
 server_message serv_msg_buff;
 update sending_update_buff;
+update_node *client_update_queue;
 char        server_names[MAX_MEMBERS][MAX_GROUP_NAME];
 int         server_status[MAX_MEMBERS];
 int         prev_server_status[MAX_MEMBERS];
@@ -149,22 +150,24 @@ int main(int argc, char *argv[]) {
 }
 
 void handle_update(update *new_update) {
-    update_node *new_update_node = NULL;
+    update *new_update_node = NULL;
     /* TODO: We do not want to receive our own updates. 
      * Should enter (update_server_id != process_index) logic here? */
+    /* For join updates, store update will not actually store the update in
+     * list of updates, but will return a malloced, new update with same data. */
     if ((new_update_node = store_update(new_update)) != NULL) {
         if (DEBUG) printf("update stored. next need to handle it\n");
         int update_type = new_update->type;
         switch (update_type) {
             case 0:
-                handle_append_update(new_update_node->update);
+                handle_append_update(new_update_node);
                 break;
             case 1:
-                handle_like_update(new_update_node->update);
+                handle_like_update(new_update_node);
                 break;
             case 2:
 //                private_spread_group = ((join_payload *)&new_update_node->update->payload)->client_name;
-                handle_server_join_update(new_update_node->update);
+                handle_server_join_update(new_update_node);
                 break;
             default:
                 perror("unexpected update type\n");
@@ -174,7 +177,7 @@ void handle_update(update *new_update) {
         if (DEBUG) printf("failed to store update\n");
     }
     if (DEBUG) printf("exit handle update with update seq: %d \n", 
-                       new_update_node->update->lts.server_seq);
+                       new_update_node->lts.server_seq);
 }
 
 void handle_append_update(update *new_update) {
@@ -403,11 +406,14 @@ void handle_server_join_update(update *join_update) {
         if (toggle == 0) { 
             if (DEBUG) printf("we found the client node to remove\n");
             free(client_node_to_change);
+            if (lobby_client_node->join_update != NULL) {
+                free(lobby_client_node->join_update);
+                lobby_client_node->join_update = NULL;    
+            }
             if (server_id != process_index) {
                 lobby_client_node_prev->next = lobby_client_node->next;
-                free(lobby_client_node); 
-            } else {
-                lobby_client_node->join_update = NULL;
+                free(lobby_client_node);
+                lobby_client_node = NULL; 
             }
             /* We have removed the nodes from chat room, 
              * and lobby (or set lobby join update to null if own client)*/
@@ -439,6 +445,10 @@ void handle_server_join_update(update *join_update) {
         client_itr->next = client_node_to_change;
         client_node_to_change->join_update = join_update;
         strcpy(client_node_to_change->client_group, client_name);
+        if (lobby_client_node->join_update != NULL) {
+            free(lobby_client_node->join_update);
+            lobby_client_node->join_update = NULL;
+        }
         lobby_client_node->join_update = join_update;
     }
 
@@ -464,34 +474,19 @@ void handle_client_join_update(update *join_update, char *client_name) {
     /* Copy client name into payload*/
     strcpy(((join_payload *)&join_update->payload)->client_name, client_name);
     join_update->lts.server_id = process_index;
-    join_update->lts.server_seq = ++local_server_seq;
-    join_update->lts.counter = ++local_counter;
-    update_node *ret_update_node = store_update(join_update);
+    update *ret_update_node = store_update(join_update);
     if (ret_update_node == NULL) {
-        perror("something went wrong in trying to store a new join update\n");
+        perror("something went wrong in trying to malloc a new join update\n");
         Bye();
     }
     /* Handle locally, which sends to clients */    
-    handle_server_join_update(ret_update_node->update);
+    handle_server_join_update(ret_update_node);
     
-    memcpy((update *)&serv_msg_buff, ret_update_node->update, sizeof(update));
+    memcpy((update *)&serv_msg_buff, ret_update_node, sizeof(update));
 
     /* Send new update to servers */
     send_server_message(&serv_msg_buff, sizeof(update)); 
 }
-/*
-void handle_join_update(update *join_update, char *client_spread_group, 
-                        int notify_option) {
-    int server_id = (join_update->lts).server_id;
-    int toggle = ((join_payload *)&(join_update->payload))->toggle;
-    if (toggle == 0) {
-        handle_lobby_client_leave(client_spread_group, notify_option, 
-                                  join_update, server_id); 
-    } else if (toggle == 1) {
-        handle_lobby_client_join(client_spread_group, server_id, join_update, 
-                                 notify_option); 
-    }
-}*/
 void handle_client_join_lobby(char *client_name) {
     /* We will assume that the client is not in the lobby. 
      * We just need to enqueue the client on the list*/
@@ -523,18 +518,16 @@ void handle_client_leave_lobby(char *client_name) {
 
     if (client_itr->next->join_update != NULL) {
         /* Client was in a chat room. Use that update to create a new leave update.*/
-        update *new_leave_update = &serv_msg_buff;
+        update *new_leave_update = (update *)&serv_msg_buff;
         memcpy(new_leave_update, client_itr->next->join_update, sizeof(update));
         new_leave_update->lts.server_id = process_index;
-        new_leave_update->lts.server_seq = ++local_server_seq;
-        new_leave_update->lts.counter = ++local_counter;
         ((join_payload *)&new_leave_update->payload)->toggle = 0;
-        update_node *new_update_node = NULL;
+        update *new_update_node = NULL;
         if((new_update_node = store_update(new_leave_update)) == NULL) {
-            perror("unable to store new leave update when client left lobby and was in a chat room beforehand\n");
+            perror("unable to malloc new leave update when client left lobby and was in a chat room beforehand\n");
             Bye();
         }
-        new_leave_update = new_update_node->update;
+        new_leave_update = new_update_node;
         /* handle leave update as if was sent to self */
         handle_server_join_update(new_leave_update);
         
@@ -546,6 +539,10 @@ void handle_client_leave_lobby(char *client_name) {
     /* Remove client from lobby */
     client_node *client_remove = client_itr->next;
     client_itr->next = client_remove->next;
+    if (client_remove->join_update != NULL) {
+        free(client_remove->join_update);
+        client_remove->join_update = NULL;
+    }
     free(client_remove);
 }
 
@@ -610,8 +607,18 @@ room_node * append_chat_room_node(char *chat_room) {
 
 /* Add give update to appropriate list of updates. Only adds if given update is
  *  most recent update. given update cannot be NULL */
-update_node * store_update(update *new_update) {
+update * store_update(update *new_update) {
     int update_server_id = (new_update->lts).server_id;
+    if (new_update->type == 2) {
+        /* this a join update. don't store. just malloc a new update.*/
+        update *new_node = NULL;
+        if ((new_node = malloc(sizeof(update))) == NULL) {
+            perror("malloc error\n");
+            Bye();
+        }
+        memcpy(new_node, new_update, sizeof(update));
+        return new_node;
+    }
     if (DEBUG) printf("try store update.\n");
     if (DEBUG && server_updates_array[update_server_id] != NULL) {
         printf("update seq: %d, current seq: %d\n", (new_update->lts).server_seq, server_updates_array[update_server_id]->update->lts.server_seq);
@@ -638,7 +645,7 @@ update_node * store_update(update *new_update) {
 
         /* TODO: consider writing to DISK HERE, so that when restart, know have the right seq. */
         if (DEBUG) printf("current seq: %d\n", server_updates_array[update_server_id]->update->lts.server_seq); 
-        return server_updates_array[update_server_id];
+        return server_updates_array[update_server_id]->update;
     }
     return NULL;
 }
@@ -657,6 +664,23 @@ void handle_server_update_bundle(server_message *recv_serv_msg,
 
 void handle_leave_of_server(int left_server_index) {
     /* TODO: write this */
+    /* Simply iterate throught the list of clients, creating a leave message
+     * for each client (copy the join message) 
+     * Be careful to iterate to next client before sending leave message.*/
+    client_node *client_itr = room_list_head.client_heads[left_server_index].next;
+    update *leave_update = (update *)&serv_msg_buff;
+    while (client_itr != NULL) {
+        if(client_itr->join_update == NULL) {
+            perror("the lobby should not have any clients without join_updates, excpet for this server, but we should never handle the leave of ourselves\n");
+            Bye();
+        }
+        memcpy(leave_update, client_itr->join_update, sizeof(update));
+        /* set the join update toggle to make it a leave update */
+        ((join_payload *)&leave_update->payload)->toggle = 0;
+        client_itr = client_itr->next;
+        /* process this leave update. it should update the clients. */
+        handle_server_join_update(leave_update); 
+    }
 }
 
 void handle_start_merge(int *seq_array, int sender_server_id) {
@@ -845,16 +869,14 @@ void handle_client_username(update *client_update, char *sender) {
         strcpy(((join_payload *)&new_update->payload)->client_name, sender);
         new_update->type = 2;
         new_update->lts.server_id = process_index;
-        new_update->lts.counter = ++local_counter;
-        new_update->lts.server_seq = ++local_server_seq;
         ((join_payload *)&new_update->payload)->toggle = 0;
         /* Store new update before handling it*/
-        update_node *ret_update_node = NULL;
+        update *ret_update_node = NULL;
         if((ret_update_node = store_update(new_update)) == NULL) {
-            perror("unable to store new update for leave for changing username\n");
+            perror("unable to malloc new update for leave for changing username\n");
             Bye();
         }
-        handle_server_join_update(ret_update_node->update); 
+        handle_server_join_update(ret_update_node); 
         if (DEBUG) {
             printf("sending leave to servers in username\n");
         }
@@ -862,8 +884,6 @@ void handle_client_username(update *client_update, char *sender) {
         send_server_message(&serv_msg_buff, sizeof(update));
 
         /* create new join update, same logic as leave update above */ 
-        new_update->lts.counter = ++local_counter;
-        new_update->lts.server_seq = ++local_server_seq;
         ((join_payload *)&new_update->payload)->toggle = 1;        
        
         /*The change in username*/
@@ -872,10 +892,10 @@ void handle_client_username(update *client_update, char *sender) {
         /* Store new update before handling it*/
         ret_update_node = NULL;
         if((ret_update_node = store_update(new_update)) == NULL) {
-            perror("unable to store new update for leave for changing username\n");
+            perror("unable to malloc new update for leave for changing username\n");
             Bye();
         }
-        handle_server_join_update(ret_update_node->update); 
+        handle_server_join_update(ret_update_node); 
         if (DEBUG) {
             printf("sending join to server in username\n");
         }
@@ -1007,6 +1027,17 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
 
 void handle_client_history(update *client_update, char *client_name) {
     char *chat_room = client_update->chat_room;
+    /* Indicate the end of history to the client with a history update */
+    ((update *)&serv_msg_buff)->type = 5;
+    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+                           client_name, 0, 
+                           sizeof(update),
+                           (char *) &serv_msg_buff);
+    if(ret < 0) {
+        SP_error(ret);
+        Bye();
+    }
+
     room_node *target_room = NULL;
     if ((target_room = get_chat_room_node(chat_room)) == NULL ) {
         perror("can't send state of non-existant room\n");
@@ -1027,7 +1058,7 @@ void handle_client_history(update *client_update, char *client_name) {
                 update_itr++;
                 if (++num_updates_itr == upper_bound_updates_per_message) {
                     /* buffer is full, send it*/
-                    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+                    ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
                                            client_name, 0, 
                                            num_updates_itr*sizeof(update),
                                            (char *) &serv_msg_buff);
@@ -1072,7 +1103,7 @@ void handle_client_history(update *client_update, char *client_name) {
         }
         /* if the bundle has updates to be sent, send the bundle */
         if (num_updates_itr > 0) {
-            int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+            ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
                                    client_name, 0, 
                                    num_updates_itr*sizeof(update),
                                    (char *) &serv_msg_buff);
@@ -1081,16 +1112,16 @@ void handle_client_history(update *client_update, char *client_name) {
                 Bye();
             }
         }
-        /* Indicate the end of history to the client with a history update */
-        ((update *)&serv_msg_buff)->type = 5;
-        int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
-                               client_name, 0, 
-                               sizeof(update),
-                               (char *) &serv_msg_buff);
-        if(ret < 0) {
-            SP_error(ret);
-            Bye();
-        }
+    }
+     /* Indicate the end of history to the client with a history update */
+    ((update *)&serv_msg_buff)->type = 5;
+    ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+                           client_name, 0, 
+                           sizeof(update),
+                           (char *) &serv_msg_buff);
+    if(ret < 0) {
+        SP_error(ret);
+        Bye();
     }
 }
 
@@ -1164,6 +1195,7 @@ static void	Read_message() {
                 for (int idx = 0; idx < num_groups; idx++) {
                     server_index = atoi(&(target_groups[idx][SERVER_INDEX_INDEX]));
                     server_status[server_index] = 1;
+                    strcpy(server_names[server_index], target_groups[idx]);
                     if (!prev_server_status[server_index]) {
                         merge_case = 1;   
                     }
