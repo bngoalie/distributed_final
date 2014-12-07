@@ -674,6 +674,10 @@ void handle_server_update_bundle(server_message *recv_serv_msg,
  
         update_itr++;
     }
+    if (merge_state && is_merge_finished()) {
+        merge_state = 0;
+        /* TODO: clear queue of client updates*/
+    }
     return;
 }
 
@@ -784,6 +788,10 @@ void burst_merge_messages() {
         sent_count++;
     }
     num_servers_responsible_for_in_merge = sent_count; 
+    if (num_servers_responsible_for_in_merge == 0) {
+        if (DEBUG) printf("done sending updates. now send joins\n");
+        /* TODO: spam clients*/
+    }
 }
 
 int is_merge_finished() {
@@ -1349,7 +1357,7 @@ static void	Read_message() {
                     }
                 }
                 if (merge_case || merge_state) {
-                    if(DEBUG) printf("/* TODO Merge!*/\n");
+                    if(DEBUG) printf("/* initiate Merge!*/\n");
                     initiate_merge();
                 } else {
                     /* TODO: Someone left. Figure out who by either comparing
@@ -1357,7 +1365,8 @@ static void	Read_message() {
                     for (int idx = 0; idx < num_groups; idx++) {
                         /* If a server status change from 1 to 0 (1-0=1)*/
                         if (prev_server_status[idx] - server_status[idx] == 1) {
-                           handle_leave_of_server(idx); 
+                            if (DEBUG) printf("handle leave of server %d\n", idx);
+                            handle_leave_of_server(idx); 
                         }
                     }
                 }
