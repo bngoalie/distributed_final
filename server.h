@@ -59,7 +59,7 @@ room_node * append_chat_room_node(char *chat_room);
 client_node * add_client_to_list_if_relevant(client_node *client_list_head, 
                                                 char *group, update *join_update); 
 void handle_update(update *new_update);
-update_node * store_update(update *update);
+update * store_update(update *update);
 void handle_server_update_bundle(server_message *recv_serv_msg, 
                                     int message_size); 
 void handle_leave_of_server(int left_server_index);
