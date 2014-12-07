@@ -636,7 +636,7 @@ update_node * store_update(update *new_update) {
         }       
 
         /* TODO: consider writing to DISK HERE, so that when restart, know have the right seq. */
-        
+        if (DEBUG) printf("current seq: %d\n", server_updates_array[update_server_id]->update->lts.server_seq); 
         return server_updates_array[update_server_id];
     }
     return NULL;
