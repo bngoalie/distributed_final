@@ -108,7 +108,7 @@ int main(int argc, char *argv[]) {
 
     sprintf(file_name, "%d", process_index);
     /* TODO: Read last known state from disk*/
-    if ( access(file_name, R_OK) != -1) {
+    if ( access(strcat(file_name, ".out"), R_OK) != -1) {
 
         if((fr = fopen(strcat(file_name, ".out"), "rb")) == NULL) {
             perror("fopen failed to open file for reading");
