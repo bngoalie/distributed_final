@@ -7,35 +7,29 @@
  * Johns Hopkins University
  */
 
-/*
- * Task List:
- * - TODO: History request AND receiving/displaying
- * - TODO: Put most printf statements in ifdef DEFINE blocks??
- * - TODO: TEST EVERYTHING
- */
-
 #include "client.h"
 #define DEBUG 0
 
 /* Globals */
 // Spread and connectivity globals
-char        username[MAX_USERNAME_LENGTH]; 
-char        private_group[MAX_GROUP_NAME]; 
-char        room_group[MAX_GROUP_NAME];
-char        server_group[MAX_GROUP_NAME];
-char        room_name[MAX_ROOM_NAME_LENGTH];
-bool        connected;
-bool        username_sent;
-bool        server_present;
-int         server_id;
-mailbox     mbox;
+char        *mess;                              // Message buffer
+char        username[MAX_USERNAME_LENGTH];      // Username array
+char        private_group[MAX_GROUP_NAME];      // Client private group array
+char        room_group[MAX_GROUP_NAME];         // Chat room group array
+char        room_name[MAX_ROOM_NAME_LENGTH];    // Chat room name array
+char        server_group[MAX_GROUP_NAME];       // Server (send) group array
+bool        connected;                          // Connected indicator
+bool        username_sent;                      // Username sent indicator
+bool        server_present;                     // Server present indicator
+bool        history_mode;                       // History mode indicator
+int         server_id;                          // Current server ID
+mailbox     mbox;                               // Spread mailbox
 // Room data structures globals
 line_node   lines_list_head;    // Sentinel head, next points to newest line
 line_node   *lines_list_tail;   // Tail pointer to oldest line
 client_node client_list_head;   // Sentinel head, next points to user (unordered)
-int         num_lines;          // Total number of lines (up to 25 normally)
-// Message buffer
-char        *mess;
+int         num_lines;          // Total number of lines (up to 25 unless history)
+
 
 /* Main */
 int main(){
@@ -43,6 +37,7 @@ int main(){
     connected = false;
     username_sent = false;
     server_present = false;
+    history_mode = false;
     room_group[0] = 0;
     room_name[0] = 0;
     username[0] = 0;
@@ -50,10 +45,13 @@ int main(){
     server_id = -1;
     lines_list_tail = NULL;
     client_list_head.next = NULL;
+
+    // Malloc message buffer
     if((mess = malloc(sizeof(server_client_mess))) == NULL){
         printf("Failed to malloc message buffer\n");
         close_client();
     }
+
     // Initialize event handling system (user input only)
     E_init(); 
     E_attach_fd(0, READ_FD, parse_input, 0, NULL, LOW_PRIORITY);
@@ -164,16 +162,19 @@ void parse_update(){
                     break;
                 case 2: // Join
                     process_join(new_update);
-                    break; 
-                case 4: // View (type 3 not handled by client)
+                    break;
+                // Case 3 is not handled by client 
+                case 4: // View 
                     display_view = true;
                     process_view(new_update);
                     break;
+                case 5: // History
+                    history_mode = !history_mode; // toggle mode
                 default:
                     printf("Error: received unknown update type!\n");
                     break;
             }
-            new_update++;
+            new_update++; // increment to next update it bundle
         }
         // Refresh Display
         if(!display_view){
@@ -183,7 +184,7 @@ void parse_update(){
         fflush(stdout);
 
     }else if(Is_membership_mess(service_type)){
-        // Handle membership changes
+        // Handle Spread membership changes
         // More specifically, detect loss of server, notify user
         ret = SP_get_memb_info(mess, service_type, &memb_info);
         if(ret < 0){
@@ -202,8 +203,8 @@ void parse_update(){
                     fflush(stdout);
                 } 
             }else if(Is_caused_network_mess(service_type)){
-                // TODO: Check for client/server partition?
-                // We might not need to handle this client-side
+                // No need to check for client/server partition
+                // We're directly connecting to target daemon
             }
         }
         
@@ -279,7 +280,7 @@ void process_append(update *append_update){
     }
 }
 
-/* Process like update from server TODO: DOUBLE CHECK THIS LOGIC PLEASE */
+/* Process like update from server */
 void process_like(update *like_update){
     // Local vars
     like_payload    *payload;
@@ -459,11 +460,6 @@ void connect_to_server(int new_id){
                 E_handle_events();
                 // Progress or revert, depending on server presence
                 if(server_present){
-                    // If previously connected, rejoin previous group
-                    //if(connected){
-                    //    if(username_sent && room_group[0] != 'l')
-                    //        join_chat_room(room_group, true); 
-                    //}
                     // Indicate success
                     get_single_server_group(server_id, server_group); // get server public group
                     connected = true;
@@ -808,23 +804,24 @@ void request_view(){
     }
 }
 
-/* Request history TODO: Implement*/
+/* Request history */
 void request_history(){
     // Local vars
-    //update *history_request;
+    update *history_request;
+    int ret;
 
-    // Send history request message to server
-    //history_request = (update *)mess;
+    // Create history request message
+    history_request = (update *)mess;
+    history_request->type = 5;
+    strcpy(history_request->username, username);
+    strcpy(history_request->chat_room, room_name);
 
-    // Clear everything
-    
-    // Set flag indicating NOT to remove old messages
-    
-    // TODO: implement logic in other functions to not clear if flag set
-    
-    // TODO: after end of history is received (special update?), clear flag
-    
-    // Immediately return to normal behavior???
+    // Send request to server
+    ret = SP_multicast(mbox, FIFO_MESS | SELF_DISCARD, server_group, 0, sizeof(update), mess);
+    if(ret < 0){
+        SP_error(ret);
+        close_client();
+    }
 }
 
 /* Update room display */
@@ -851,7 +848,7 @@ void update_display(){
             printf(", ");
         user_itr = user_itr->next;
     }
-    printf("\n\n");
+    printf("\n");
     
     // Iterate through lines data structure
     line_itr = lines_list_tail;
@@ -883,9 +880,7 @@ void update_display(){
             printf("\n");
         line_itr = line_itr->prev;
     }
-    printf("\n");
     fflush(stdout); 
-    // TODO: Possibly display recent status strings at bottom... 
 }
 
 /* Clear lines data structure */
