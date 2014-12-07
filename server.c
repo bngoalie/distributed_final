@@ -170,7 +170,11 @@ void handle_update(update *new_update) {
                 perror("unexpected update type\n");
                 Bye();
         } 
+    } else {
+        if (DEBUG) printf("failed to store update\n");
     }
+    if (DEBUG) printf("exit handle update with update seq: %d \n", 
+                       new_update_node->update->lts.server_seq);
 }
 
 void handle_append_update(update *new_update) {
@@ -358,9 +362,20 @@ void handle_server_join_update(update *join_update) {
             perror("trying to process leave update for a client we don't know about\n");
             Bye();
         }
+    } else if (toggle == 1 && lobby_client_node->join_update != NULL) {
+        /* He was in a group prior. send a fake leave message to clients */
+        update *update_payload = (update *)(server_client_mess_buff.payload);
+        memcpy(update_payload, lobby_client_node->join_update, sizeof(update));
+        char chat_room_group[MAX_GROUP_NAME];
+        get_room_group(process_index, lobby_client_node->join_update->chat_room, chat_room_group);
+        int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), chat_room_group, 0, sizeof(update), (char *) &server_client_mess_buff);
+        if(ret < 0) {
+            SP_error(ret);
+            Bye();
+        }
     } 
     
-    /* Find possibly already existing client_node to move/delete*/
+    if (DEBUG) printf("/* Find possibly already existing client_node to move/delete*/\n");
     client_node *client_node_to_change = NULL;
     if (lobby_client_node->join_update != NULL 
         && lobby_client_node->join_update->chat_room[0] != 0) {
