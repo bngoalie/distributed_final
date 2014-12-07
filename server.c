@@ -663,6 +663,23 @@ void handle_server_update_bundle(server_message *recv_serv_msg,
 
 void handle_leave_of_server(int left_server_index) {
     /* TODO: write this */
+    /* Simply iterate throught the list of clients, creating a leave message
+     * for each client (copy the join message) 
+     * Be careful to iterate to next client before sending leave message.*/
+    client_node *client_itr = room_list_head.client_heads[left_server_index].next;
+    update *leave_update = (update *)&serv_msg_buff;
+    while (client_itr != NULL) {
+        if(client_itr->join_update == NULL) {
+            perror("the lobby should not have any clients without join_updates, excpet for this server, but we should never handle the leave of ourselves\n");
+            Bye();
+        }
+        memcpy(leave_update, client_itr->join_update, sizeof(update));
+        /* set the join update toggle to make it a leave update */
+        ((join_payload *)&leave_update->payload)->toggle = 0;
+        client_itr = client_itr->next;
+        /* process this leave update. it should update the clients. */
+        handle_server_join_update(leave_update); 
+    }
 }
 
 void handle_start_merge(int *seq_array, int sender_server_id) {
