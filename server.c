@@ -669,10 +669,6 @@ void handle_server_update_bundle(server_message *recv_serv_msg,
     for (int idx = 0; idx < num_updates; idx++) {
         if(DEBUG) printf("handling update\n");
         handle_update(update_itr);
-        if (merge_state) {
-            /* TODO: update state of the merge*/
-        }
- 
         update_itr++;
     }
     if (merge_state && is_merge_finished()) {
@@ -725,6 +721,7 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
     completion_mask |= (1 << sender_server_id);
 
     if (expected_completion_mask == completion_mask) {
+        if (DEBUG) printf("set merge state to 2\n");
         /* Set merge state to expect updates, not start messages */
         merge_state = 2;
         /* Received all expected start_merge messages*/
@@ -746,6 +743,11 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
         /* We send clients first because don't can't end merge then send clients*/
         send_local_clients_to_servers(); 
         burst_merge_messages();
+        if (DEBUG) printf("tried bursting and sending clients\n");
+        if (is_merge_finished()) {
+            if (DEBUG) printf("merge finished before exiting start\n");
+            merge_state = 0;
+        }
     }
 }
 
