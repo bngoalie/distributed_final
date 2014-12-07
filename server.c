@@ -824,7 +824,7 @@ void handle_client_view(update *client_update, char *sender) {
 
 void handle_client_username(update *client_update, char *sender) {
     client_node *client_itr 
-        = &room_list_head.client_heads[client_update->lts.server_id];
+        = &room_list_head.client_heads[process_index];
     while (client_itr->next != NULL
         && strcmp(client_itr->next->client_group, sender) != 0) {
         client_itr = client_itr->next;
