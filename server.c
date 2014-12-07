@@ -702,7 +702,7 @@ void handle_leave_of_server(int left_server_index) {
 }
 
 void handle_start_merge(int *seq_array, int sender_server_id) {
-    if (DEBUG) printf("handle start merge mes\n");
+    if (DEBUG) printf("handle start merge mes from server %d\n", sender_server_id);
     /*server_responsibility_assign*/
     for (int idx = 0; idx < num_processes; idx++) {
         if (should_choose_new_server(expected_max_seqs[idx], seq_array[idx],
@@ -718,7 +718,7 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
             min_seqs[idx] = seq_array[idx];
         }
     }
-    
+    if(DEBUG) printf("completion mask: %d, expected: %d\n", completion_mask, expected_completion_mask); 
     completion_mask |= (1 << sender_server_id);
 
     if (expected_completion_mask == completion_mask) {
