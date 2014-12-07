@@ -854,8 +854,7 @@ int should_choose_new_server(int current_max_seq, int new_max_seq,
 void initiate_merge() {
     expected_completion_mask = 0;
     self_received_merge_messages = 0;
-    completion_mask = 1;
-    completion_mask <<= process_index;
+    completion_mask = 0;
     num_servers_responsible_for_in_merge = 0;
     merge_state = 1;
     int *max_seq_array = (int *)(serv_msg_buff.payload); 
