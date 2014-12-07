@@ -740,6 +740,7 @@ void handle_client_message(update *client_update, char *sender) {
             handle_client_join_update(client_update, sender);
             /* Since clients only send joins, this should always happen.*/
             if (((join_payload *)&client_update->payload)->toggle == 1) {
+                if (DEBUG) printf("send the state to the client!\n");
                 send_current_state_to_client(sender, client_update->chat_room);
             }
             break;
@@ -880,6 +881,7 @@ void handle_client_username(update *client_update, char *sender) {
         /* Send new leave update to servers */
         send_server_message(&serv_msg_buff, sizeof(update));
 
+        if (DEBUG) printf("current seq: %d\n", server_updates_array[process_index]->update->lts.server_seq); 
     }
 
     /* nothing changes in the lobby because we don't store the username in the
