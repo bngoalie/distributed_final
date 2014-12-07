@@ -460,6 +460,7 @@ void handle_server_join_update(update *join_update) {
     memcpy(update_payload, join_update, sizeof(update));
     char chat_room_group[MAX_GROUP_NAME];
     get_room_group(process_index, chat_room, chat_room_group);
+    if (DEBUG) printf("sending to group %s\n", chat_room_group);
     int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), chat_room_group, 0, sizeof(update), (char *) &server_client_mess_buff);
     if(ret < 0) {
         SP_error(ret);
@@ -1232,7 +1233,7 @@ static void	Read_message() {
                     }
                 }
                 if (merge_case) {
-                    /* TODO Merge!*/
+                    if(DEBUG) printf("/* TODO Merge!*/\n");
                 } else {
                     /* TODO: Someone left. Figure out who by either comparing
                      * prev_server_status and server_status or get memb_info*/
