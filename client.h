@@ -30,6 +30,7 @@
 #define DAEMON3 "10010@128.220.224.91"
 #define DAEMON4 "10010@128.220.224.92"
 #define DAEMON5 "10010@128.220.224.93"
+#define CURSOR  "> "
  
 /* TYPE DEFINITIONS */
 // none at this time...
@@ -56,6 +57,9 @@ void process_view(update *view_update);
 
 /* Connects to server with given server_id */
 void connect_to_server(int server_id);
+
+/* Perform a complete disconnect */
+void disconnect();
 
 /* Check initial lobby membership for server's presence */
 void check_for_server();

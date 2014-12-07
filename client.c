@@ -10,13 +10,12 @@
 /*
  * Task List:
  * - TODO: History request AND receiving/displaying
- * - TODO: View displaying
  * - TODO: Put most printf statements in ifdef DEFINE blocks??
  * - TODO: TEST EVERYTHING
  */
 
 #include "client.h"
-#define DEBUG 1
+#define DEBUG 0
 
 /* Globals */
 // Spread and connectivity globals
@@ -58,6 +57,8 @@ int main(){
     // Initialize event handling system (user input only)
     E_init(); 
     E_attach_fd(0, READ_FD, parse_input, 0, NULL, LOW_PRIORITY);
+    printf(CURSOR);
+    fflush(stdout);
     E_handle_events();
 }
 
@@ -103,10 +104,14 @@ void parse_input(){
             close_client();        
             break;
         default:    // Invalid input
-            printf("Error: invalid input");
+            printf("Error: invalid input\n");
             break;
     }
-    fflush(stdout);
+    // Print cursor and flush
+    if(input[0] != 'v'){
+        printf(CURSOR);
+        fflush(stdout);
+    }
 }
 
 /* Parse update from server */
@@ -115,7 +120,6 @@ void parse_update(){
     membership_info memb_info;
     update  *new_update;
     char    *member;
-    char    lobby[MAX_USERNAME_LENGTH];
     char    server[MAX_USERNAME_LENGTH];
     char    sender[MAX_GROUP_NAME];
     char    target_groups[MAX_GROUPS][MAX_GROUP_NAME];
@@ -137,12 +141,9 @@ void parse_update(){
         if(ret == -8)
             // Spread daemon crash - treat as full disconnect!
             printf("Disconnected from Spread daemon. Please try connecting to another server.\n");
-            clear_lines();
-            clear_users();
-            connected = 0;
-            server_id = -1;
-            room_name[0] = 0;
-            room_group[0] = 0;
+            printf(CURSOR);
+            fflush(stdout);
+            disconnect();
         close_client();
     }
 
@@ -175,8 +176,11 @@ void parse_update(){
             new_update++;
         }
         // Refresh Display
-        if(!display_view)
+        if(!display_view){
             update_display();
+        }
+        printf(CURSOR);
+        fflush(stdout);
 
     }else if(Is_membership_mess(service_type)){
         // Handle membership changes
@@ -189,20 +193,13 @@ void parse_update(){
         }else if(Is_reg_memb_mess(service_type)){
             if(Is_caused_disconnect_mess(service_type)){
                 // Check for server disconnect
-                printf("Disconnect of member %s\n", memb_info.changed_member);
                 member = strtok(memb_info.changed_member, "#");
                 get_single_server_group(server_id, server);
                 if(!strcmp(member, server)){
-                    printf("Lost connection with server %d\n", server_id+1);
-                    clear_lines();
-                    clear_users();
-                    connected = 0;
-                    SP_leave(mbox, room_group);
-                    get_lobby_group(server_id, lobby);
-                    SP_leave(mbox, lobby);
-                    server_id = -1;
-                    room_name[0] = 0;
-                    room_group[0] = 0;
+                    printf("Error: lost connection with server %d\n", server_id+1);
+                    printf("Please try reconnecting or connecting to a different server.\n");
+                    printf(CURSOR);
+                    fflush(stdout);
                 } 
             }else if(Is_caused_network_mess(service_type)){
                 // TODO: Check for client/server partition?
@@ -405,23 +402,19 @@ void process_view(update *view_update){
     for(int i = 0; i < 5; i++)
         if(payload->view[i])
             printf("server %d\n", i+1);
-    printf("\n"); 
 }
 
 /* Connect to server with given server_id */
 void connect_to_server(int new_id){
     // Local vars
-    int         temp_id;
     int         ret;
-    mailbox     mbox_temp;
     sp_time     timeout;
-    char        prev_room[MAX_ROOM_NAME_LENGTH];
     const char  *daemons[5] = {DAEMON1, DAEMON2, DAEMON3, DAEMON4, DAEMON5}; 
-    
-    // Store current mailbox if already connected TODO: verify this will work 
+   
+    // Disconnect from current server
     if(connected)
-        mbox_temp = mbox;
-
+        SP_disconnect(mbox);
+ 
     // Check that id is valid and new
     if(new_id < 0 || new_id > 4)
         printf("Error: invalid server ID (range is 1-5)\n");
@@ -440,46 +433,43 @@ void connect_to_server(int new_id){
         if(ret != ACCEPT_SESSION){
             // If unable to connect to daemon, indicate failure
             printf("Error: unable to connect to daemon for server %d\n", new_id+1);
-            if(connected){ // if previously connected, revert
-                mbox = mbox_temp; 
-                E_attach_fd(mbox, READ_FD, parse_update, 0, NULL, HIGH_PRIORITY);
-                printf("Reverting to server %d\n", server_id+1);
-            }
+            printf("Please try reconnecting or connecting to another server.\n");
+            disconnect();
+            printf(CURSOR);
+            fflush(stdout);
         }else{
             // If successful, join lobby group
-            strcpy(prev_room, room_group);
             get_lobby_group(new_id, room_group); // lobby group needs to have a distinct name
             ret = SP_join(mbox, room_group);
             if(ret != 0){
                 // If unable to join lobby, indicate failure
                 SP_error(ret);
-                printf("Error: unable to join lobby group for server %d\n", new_id+1);
-                if(connected){ // if previously connected, revert
-                    mbox = mbox_temp;
-                    E_attach_fd(mbox, READ_FD, parse_update, 0, NULL, HIGH_PRIORITY);
-                    strcpy(room_group, prev_room);
-                    printf("Reverting to server %d\n", server_id+1);
-                }
+                printf("Error: unable to join the lobby group for server %d.\n", new_id+1);
+                printf("Please try reconnecting or connecting to another server.\n");
+                disconnect();
+                printf(CURSOR);
+                fflush(stdout);
             }else{
                 // Indicate success and store previous id
-                printf("Successfully joined group %s\n", room_group);
-                temp_id = server_id;
+                if(DEBUG)
+                    printf("Successfully joined group %s\n", room_group);
                 server_id = new_id;
                 // Set up event handler for server-check function
                 E_attach_fd(mbox, READ_FD, check_for_server, 0, NULL, HIGH_PRIORITY);
                 E_handle_events();
                 // Progress or revert, depending on server presence
                 if(server_present){
-                    // If previously connected, disconnect from previous daemon
-                    if(connected){
-                        SP_disconnect(mbox_temp);
-                        // Also rejoin previous room on new server
-                        join_chat_room(room_group, true); // TODO: is this a problem if in lobby?
-                    }
+                    // If previously connected, rejoin previous group
+                    //if(connected){
+                    //    if(username_sent && room_group[0] != 'l')
+                    //        join_chat_room(room_group, true); 
+                    //}
                     // Indicate success
                     get_single_server_group(server_id, server_group); // get server public group
                     connected = true;
-                    printf("Server %d detected in lobby group\n", server_id+1);
+                    printf("Successfully connected to server %d!\n", server_id+1);
+                    printf(CURSOR);
+                    fflush(stdout);
                     // If username is already set, send to server
                     username_sent = false;
                     if(strcmp(username, ""))
@@ -490,14 +480,11 @@ void connect_to_server(int new_id){
                     clear_lines();
                     clear_users();
                 }else{
-                    printf("Failed to detect server %d in lobby group\n", server_id+1);
-                    server_id = temp_id;
-                    if(connected){
-                        printf("Reverting to server %d\n", server_id+1);
-                        mbox = mbox_temp;
-                        E_attach_fd(mbox, READ_FD, parse_update, 0, NULL, HIGH_PRIORITY);
-                        strcpy(room_group, prev_room);
-                    }
+                    printf("Error: failed to detect server %d in the lobby group.\n", server_id+1);
+                    printf("Please try reconnecting or connecting to another server.\n");
+                    disconnect();
+                    printf(CURSOR);
+                    fflush(stdout);
                 }
             }
         }
@@ -505,6 +492,24 @@ void connect_to_server(int new_id){
         E_attach_fd(0, READ_FD, parse_input, 0, NULL, LOW_PRIORITY);
         E_handle_events();
     }
+}
+
+/* Perform a complete disconnect */
+void disconnect()
+{
+    // Local vars
+    char lobby[MAX_GROUP_NAME];
+
+    // Disconnect and clean up vars
+    clear_lines();
+    clear_users();
+    connected = 0;
+    SP_leave(mbox, room_group);
+    get_lobby_group(server_id, lobby);
+    SP_leave(mbox, lobby);
+    server_id = -1;
+    room_name[0] = 0;
+    room_group[0] = 0;
 }
 
 /* Check initial lobby join membership message for server's presence */
@@ -772,7 +777,8 @@ void send_username_update(){
             close_client();
         }
         username_sent = true;
-        printf("Sending username update\n");
+        if(DEBUG)
+            printf("Sending username update\n");
     }
 }
 
@@ -834,8 +840,9 @@ void update_display(){
     system("clear");
 
     // Print room and users:
-    printf("User: %s\n", username);
-    printf("Room: %s\n", room_name);
+    printf(" Username: %s\n", username);
+    printf("   Server: %d\n", server_id+1);
+    printf("     Room: %s\n", room_name);
     printf("Attendees: ");
     user_itr = client_list_head.next;
     while(user_itr != NULL){
@@ -856,11 +863,11 @@ void update_display(){
         fflush(stdout); 
         // Print username
         sprintf(buff, "%%%ds: ", MAX_USERNAME_LENGTH);
-        printf(buff, line_itr->append_update->username); 
-        fflush(stdout); 
+        printf(buff, line_itr->append_update->username);
+        fflush(stdout);
         // Print line text
         printf("%-80s ", (char *)&(line_itr->append_update->payload));
-        fflush(stdout); 
+        fflush(stdout);
         // Calculate number of likes
         like_itr = line_itr->likers_list_head.next;
         likes = 0;
