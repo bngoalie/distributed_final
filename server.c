@@ -520,10 +520,11 @@ void handle_client_leave_lobby(char *client_name) {
         perror("tried to remove a local client, couldn't find in lobby\n"); 
         Bye();
     }
-    update *new_leave_update = NULL;
+
     if (client_itr->next->join_update != NULL) {
         /* Client was in a chat room. Use that update to create a new leave update.*/
-        new_leave_update = client_itr->next->join_update;
+        update *new_leave_update = &serv_msg_buff;
+        memcpy(new_leave_update, client_itr->next->join_update, sizeof(update));
         new_leave_update->lts.server_id = process_index;
         new_leave_update->lts.server_seq = ++local_server_seq;
         new_leave_update->lts.counter = ++local_counter;
