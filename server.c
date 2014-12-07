@@ -148,15 +148,8 @@ int main(int argc, char *argv[]) {
         printf("User: connected to %s with private group %s\n", Spread_name, Private_group);
     }
 
-   /* TODO: send out request to servers for all messages after largest knowns
-     * seqs from each server */
 
-    /* join server's personal_group.
-     * We do this last because we want to first get in sync with servers first */
-    /* TODO: this logic should probably only happen after this server is done
-     * merging" with the rest of the servers. 
-     * Issue is if instead treat requested updates regularly, and join personal_group
-     * then how determine different than regular updates and keep from spamming clients?*/
+    /* join server's personal_group. */
     ret = SP_join(Mbox, personal_group);
     if (ret < 0) {
         SP_error(ret);
