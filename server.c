@@ -1408,7 +1408,7 @@ static void	Read_message() {
                         merge_case = 1;   
                     }
                 }
-                if (merge_case || merge_state) {
+                if ((merge_case || merge_state) && num_groups > 1) {
                     if(DEBUG) printf("/* initiate Merge!*/\n");
                     initiate_merge();
                 } else {
