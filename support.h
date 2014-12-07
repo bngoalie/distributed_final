@@ -19,7 +19,7 @@
 
 #define SPREAD_SERVER_GROUP "server_group"
 #define PORT "10010"
-#define MAX_USERNAME_LENGTH     20
+#define MAX_USERNAME_LENGTH     14
 #define MAX_ROOM_NAME_LENGTH    20
 #define MAX_LINE_LENGTH         80
 #define MAX_MESS_LEN            100000
