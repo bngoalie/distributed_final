@@ -99,6 +99,7 @@ typedef struct update_node {
     lamport_timestamp lts;
     struct update_node *next;
     struct update_node *prev;
+    char client_name[MAX_GROUP_NAME];
 } update_node;
 
 // Client node
