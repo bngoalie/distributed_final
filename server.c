@@ -44,6 +44,7 @@ update_node *update_list_tail;
 update_node *server_updates_array[MAX_MEMBERS];
 server_message serv_msg_buff;
 update sending_update_buff;
+update_node *client_update_queue;
 char        server_names[MAX_MEMBERS][MAX_GROUP_NAME];
 int         server_status[MAX_MEMBERS];
 int         prev_server_status[MAX_MEMBERS];
@@ -1026,6 +1027,17 @@ void send_current_state_to_client(char *client_name, char *chat_room) {
 
 void handle_client_history(update *client_update, char *client_name) {
     char *chat_room = client_update->chat_room;
+    /* Indicate the end of history to the client with a history update */
+    ((update *)&serv_msg_buff)->type = 5;
+    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+                           client_name, 0, 
+                           sizeof(update),
+                           (char *) &serv_msg_buff);
+    if(ret < 0) {
+        SP_error(ret);
+        Bye();
+    }
+
     room_node *target_room = NULL;
     if ((target_room = get_chat_room_node(chat_room)) == NULL ) {
         perror("can't send state of non-existant room\n");
@@ -1046,7 +1058,7 @@ void handle_client_history(update *client_update, char *client_name) {
                 update_itr++;
                 if (++num_updates_itr == upper_bound_updates_per_message) {
                     /* buffer is full, send it*/
-                    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+                    ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
                                            client_name, 0, 
                                            num_updates_itr*sizeof(update),
                                            (char *) &serv_msg_buff);
@@ -1091,7 +1103,7 @@ void handle_client_history(update *client_update, char *client_name) {
         }
         /* if the bundle has updates to be sent, send the bundle */
         if (num_updates_itr > 0) {
-            int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+            ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
                                    client_name, 0, 
                                    num_updates_itr*sizeof(update),
                                    (char *) &serv_msg_buff);
@@ -1100,16 +1112,16 @@ void handle_client_history(update *client_update, char *client_name) {
                 Bye();
             }
         }
-        /* Indicate the end of history to the client with a history update */
-        ((update *)&serv_msg_buff)->type = 5;
-        int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
-                               client_name, 0, 
-                               sizeof(update),
-                               (char *) &serv_msg_buff);
-        if(ret < 0) {
-            SP_error(ret);
-            Bye();
-        }
+    }
+     /* Indicate the end of history to the client with a history update */
+    ((update *)&serv_msg_buff)->type = 5;
+    ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD),
+                           client_name, 0, 
+                           sizeof(update),
+                           (char *) &serv_msg_buff);
+    if(ret < 0) {
+        SP_error(ret);
+        Bye();
     }
 }
 
@@ -1183,6 +1195,7 @@ static void	Read_message() {
                 for (int idx = 0; idx < num_groups; idx++) {
                     server_index = atoi(&(target_groups[idx][SERVER_INDEX_INDEX]));
                     server_status[server_index] = 1;
+                    strcpy(server_names[server_index], target_groups[idx]);
                     if (!prev_server_status[server_index]) {
                         merge_case = 1;   
                     }
