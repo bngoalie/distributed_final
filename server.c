@@ -1358,7 +1358,7 @@ static void	Read_message() {
                     case 0: // regular update
                         /* TODO: if (merge_state !=2) run this code, otherwise, queue merge updates */
                         if (DEBUG) printf("sender: %s\n", sender);
-                        if (check_name_server_equal(sender, User)) {
+                        if (process_index != get_group_num_from_name(sender)) {
                             handle_server_update_bundle(recv_serv_msg,ret);
                         } else if (merge_state == 2){    
                             if (DEBUG) printf("received merge message from self\n");
