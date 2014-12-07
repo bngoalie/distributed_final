@@ -621,6 +621,7 @@ room_node * append_chat_room_node(char *chat_room) {
  *  most recent update. given update cannot be NULL */
 update * store_update(update *new_update) {
     int update_server_id = (new_update->lts).server_id;
+    if (DEBUG) printf("in store, server_id is %d\n", update_server_id);
     if (new_update->type == 2) {
         /* this a join update. don't store. just malloc a new update.*/
         update *new_node = NULL;
