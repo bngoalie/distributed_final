@@ -67,6 +67,8 @@ int         expected_max_seqs[MAX_MEMBERS];
 int         self_received_merge_messages;
 int         min_seqs[MAX_MEMBERS];
 int         num_new_servers;
+char file_name[15];
+
 
 static	void	    Usage( int argc, char *argv[] );
 static  void        Print_help();
@@ -104,9 +106,8 @@ int main(int argc, char *argv[]) {
         next_msg_to_send_array[i] = NULL;
     } 
 
-    /* TODO: Read last known state from disk*/
-    char file_name[15];
     sprintf(file_name, "%d", process_index);
+    /* TODO: Read last known state from disk*/
     if ( access(file_name, R_OK) != -1) {
 
         if((fr = fopen(strcat(file_name, ".out"), "r")) == NULL) {
@@ -673,8 +674,16 @@ update * store_update(update *new_update) {
         }       
 
         /* Write to disk. */
+        if((fd = fopen(strcat(file_name, ".out"), "a")) == NULL) {
+            perror("fopen failed to open file for writing");
+            exit(0);
+        }
         fprintf(fd, "%s", (char *)new_node->update);
-        fflush(fd);
+        if (fd != NULL) {
+            fclose(fd);
+            fd = NULL;
+        }
+            
         if (DEBUG) printf("current seq: %d\n", server_updates_array[update_server_id]->update->lts.server_seq); 
         return server_updates_array[update_server_id]->update;
     }
@@ -1504,20 +1513,6 @@ static void Usage(int argc, char *argv[])
         /* Check number of processes */
         if(num_processes > MAX_MEMBERS) {
             perror("mcast: arguments error - too many processes\n");
-            exit(0);
-        }
-        /* Open file writer */
-        /* TODO: should either open file writer after reading from file 
-         * (which this function does not guarantee on its own) or create
-         * some kind of naming scheme based on time. but then how know 
-         * file name to open? perhaps with another file that is a table
-         * of sorts. 
-         * OR, just make file write append instead of overwrite. */
-        char file_name[15];
-        sprintf(file_name, "%d", process_index);
-        /* TODO: currently opens file for "appending" */
-        if((fd = fopen(strcat(file_name, ".out"), "a")) == NULL) {
-            perror("fopen failed to open file for writing");
             exit(0);
         }
     }
