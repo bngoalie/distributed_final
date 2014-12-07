@@ -116,6 +116,7 @@ int main(int argc, char *argv[]) {
         }
         update update_buffer;
         while (fread(&update_buffer, sizeof(update), 1, fr) > 0) {
+            if (DEBUG) printf("type %d, chat_room: %s, username %s\n", update_buffer.type, update_buffer.chat_room, update_buffer.username);
             handle_update(&update_buffer);       
         } 
        
