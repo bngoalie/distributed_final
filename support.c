@@ -57,8 +57,12 @@ void get_lobby_group(int server_id, char *group){
 
 
 int get_group_num_from_name(char *group_name) {
-    int len = strlen(group_name);
-    return atoi(&group_name[len-1]);
+
+    char tmp_str[256];
+    strcpy(tmp_str, group_name);
+    char *token = strtok(tmp_str, "#");
+    int len = strlen(token);
+    return atoi(&token[len-1]);
 }
 
 int check_name_server_equal(char *server_name, char *spread_name) {
