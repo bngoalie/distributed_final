@@ -15,7 +15,7 @@
 #include <string.h>
 #include "support.h"
 #include "server.h"
-
+#include <limits.h>
 
 #define MAX_GROUPS      MAX_MEMBERS
 #define DEBUG           1
@@ -46,6 +46,9 @@ server_message serv_msg_buff;
 update sending_update_buff;
 update_node *client_update_queue_head;
 update_node *client_update_queue_tail;
+update_node *merge_update_queue_head;
+update_node *merge_update_queue_tail;
+update_node *next_msg_to_send_array[MAX_MEMBERS];
 char        server_names[MAX_MEMBERS][MAX_GROUP_NAME];
 int         server_status[MAX_MEMBERS];
 int         prev_server_status[MAX_MEMBERS];
@@ -57,6 +60,9 @@ int         completion_mask;
 int         num_servers_responsible_for_in_merge;
 int         server_responsibility_assign[MAX_MEMBERS];
 int         expected_max_seqs[MAX_MEMBERS];
+int         self_received_merge_messages;
+int         min_seqs[MAX_MEMBERS];
+int         num_new_servers;
 
 static	void	    Usage( int argc, char *argv[] );
 static  void        Print_help();
@@ -91,6 +97,7 @@ int main(int argc, char *argv[]) {
         server_updates_array[i] = NULL;
         server_responsibility_assign[i] = num_processes; 
         expected_max_seqs[i] = 0;
+        next_msg_to_send_array[i] = NULL;
     } 
 
     /* TODO: Read last known state from disk*/
@@ -490,7 +497,7 @@ void handle_client_join_update(update *join_update, char *client_name) {
     memcpy((update *)&serv_msg_buff, ret_update_node, sizeof(update));
 
     /* Send new update to servers */
-    send_server_message(&serv_msg_buff, sizeof(update)); 
+    send_server_message(&serv_msg_buff, sizeof(update), 0); 
 }
 void handle_client_join_lobby(char *client_name) {
     /* We will assume that the client is not in the lobby. 
@@ -538,7 +545,7 @@ void handle_client_leave_lobby(char *client_name) {
         
         memcpy((update *)&serv_msg_buff, new_leave_update, sizeof(update));
         /* Send new update to servers */
-        send_server_message(&serv_msg_buff, sizeof(update)); 
+        send_server_message(&serv_msg_buff, sizeof(update), 0); 
     }
     
     /* Remove client from lobby */
@@ -662,7 +669,15 @@ void handle_server_update_bundle(server_message *recv_serv_msg,
     for (int idx = 0; idx < num_updates; idx++) {
         if(DEBUG) printf("handling update\n");
         handle_update(update_itr);
+        if (merge_state) {
+            /* TODO: update state of the merge*/
+        }
+ 
         update_itr++;
+    }
+    if (merge_state && is_merge_finished()) {
+        merge_state = 0;
+        /* TODO: clear queue of client updates*/
     }
     return;
 }
@@ -696,14 +711,130 @@ void handle_start_merge(int *seq_array, int sender_server_id) {
                                      sender_server_id)) {
             server_responsibility_assign[idx] = sender_server_id;
             expected_max_seqs[idx] = seq_array[idx];
+            if (idx == process_index) {
+                num_servers_responsible_for_in_merge++;
+            } 
+        }
+        if (seq_array[idx] < min_seqs[idx]) {
+            min_seqs[idx] = seq_array[idx];
         }
     }
     
     completion_mask |= (1 << sender_server_id);
 
     if (expected_completion_mask == completion_mask) {
+        /* Set merge state to expect updates, not start messages */
+        merge_state = 2;
+        /* Received all expected start_merge messages*/
         /* TODO: send merging messages */ 
+        for (int idx = 0; idx < num_processes; idx++) {
+            /* Check if responsible for sending updates*/
+            if (server_responsibility_assign[idx] == process_index
+                && server_updates_array[idx] != NULL) {
+                /* Find oldest update(_node) to send. When sending, will simply 
+                 * udpate next_message_to_send_array to point to next message */
+                update_node *node_itr = server_updates_array[idx];
+                while (node_itr != NULL 
+                       && node_itr->update->lts.server_seq >= min_seqs[idx]) {
+                    next_msg_to_send_array[idx] = node_itr;
+                    node_itr = node_itr->prev;
+                }
+            }  
+        }
+        /* We send clients first because don't can't end merge then send clients*/
+        send_local_clients_to_servers(); 
+        burst_merge_messages();
     }
+}
+
+void burst_merge_messages() {
+    int sent_count = 0;
+    update *update_itr = (update *)&serv_msg_buff;
+    int num_in_bundle = 0;
+    int upper_bound = sizeof(server_message)/sizeof(update);
+    while (sent_count < num_servers_responsible_for_in_merge) {
+        int inner_itr = 0;
+        int all_null = 1;
+        while (num_in_bundle < upper_bound) {
+            if (next_msg_to_send_array[inner_itr] != NULL) {
+                all_null = 0;
+                memcpy(update_itr, next_msg_to_send_array[inner_itr]->update, 
+                       sizeof(update));
+                update_itr++;
+                num_in_bundle++;
+                next_msg_to_send_array[inner_itr] 
+                    = next_msg_to_send_array[inner_itr]->next;
+            }
+            inner_itr++;
+            if (inner_itr == num_processes && all_null) {
+                /* check if any left in bundle, then send bundle, then exit */
+                if (num_in_bundle > 0) {
+                    send_server_message(&serv_msg_buff, 
+                                           sizeof(update)*num_in_bundle, 1);
+                }
+                num_servers_responsible_for_in_merge = 0; 
+                return;
+            } else if (inner_itr == num_processes) {
+                inner_itr = 0;
+                all_null = 1;
+            }
+        }
+        if (num_in_bundle > 0) {
+            send_server_message(&serv_msg_buff, 
+                                   sizeof(update)*num_in_bundle, 1);
+            num_in_bundle = 0;
+        }
+        update_itr = (update *)&serv_msg_buff;
+        sent_count++;
+    }
+    num_servers_responsible_for_in_merge = sent_count; 
+}
+
+void send_local_clients_to_servers() {
+    char new_groups[num_new_servers][MAX_GROUP_NAME];
+    int group_itr = 0;
+    for(int idx = 0; idx < num_processes; idx++) {
+        if (!prev_server_status[idx]) {
+            /* send to this server*/
+            strcpy(new_groups[group_itr], server_names[idx]);
+            group_itr++;
+        }
+    }
+    int bundle_size = 0;
+    update *update_itr = (update *)&serv_msg_buff;
+    client_node *client_itr = room_list_head.client_heads[process_index].next;
+    while(client_itr != NULL) {
+        if(client_itr->join_update != NULL) {
+            /* Send the join to servers */
+            memcpy(update_itr, client_itr->join_update, sizeof(update));
+            update_itr++;
+            bundle_size++;
+        }
+        client_itr = client_itr->next;
+    }
+    int ret = SP_multigroup_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), 
+                                      num_new_servers, 
+                                     (const char (*)[MAX_GROUP_NAME]) new_groups, 
+                                      0, bundle_size*sizeof(update), 
+                                      (char *)&serv_msg_buff);
+    if(ret < 0) {
+        SP_error(ret);
+        Bye();
+    }
+    
+}
+
+int is_merge_finished() {
+    for (int idx = 0; idx < num_processes; idx++) {
+        if (server_status[idx] == 1 
+            && server_updates_array[idx] != NULL 
+            && server_updates_array[idx]->update->lts.server_seq < expected_max_seqs[idx]) {
+            /* the current max seq for server idx is lower than expected for 
+             * completion*/
+            return 0;
+        }
+    }
+    return 1;
 }
 
 int should_choose_new_server(int current_max_seq, int new_max_seq, 
@@ -717,12 +848,15 @@ int should_choose_new_server(int current_max_seq, int new_max_seq,
 
 void initiate_merge() {
     expected_completion_mask = 0;
+    self_received_merge_messages = 0;
     completion_mask = 1;
     completion_mask <<= process_index;
     num_servers_responsible_for_in_merge = 0;
     merge_state = 1;
     int *max_seq_array = (int *)(serv_msg_buff.payload); 
     for (int idx = 0; idx < num_processes; idx++) {
+        next_msg_to_send_array[idx] = NULL;
+        min_seqs[idx] = INT_MAX;
         /* TODO: REMEMBER: first index is rightmost bit (idx)*/
         expected_completion_mask |= (server_status[idx] << idx);
         /* Set max known seq for this server */
@@ -827,7 +961,7 @@ void handle_client_append(update *client_update) {
     handle_update(new_update);
 
     /* send set server_message to server group */
-    send_server_message(&serv_msg_buff, sizeof(update));
+    send_server_message(&serv_msg_buff, sizeof(update), 0);
 
 }
 
@@ -845,12 +979,19 @@ void handle_client_like(update *client_update) {
     handle_update(new_update);
 
     /* send set server_message to server group */
-    send_server_message(&serv_msg_buff, sizeof(update));
+    send_server_message(&serv_msg_buff, sizeof(update), 0);
 }
 
-void send_server_message(server_message *msg_to_send, int size_of_message) {
-    int ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), server_group, 0,
-                           size_of_message, (char *) msg_to_send);
+void send_server_message(server_message *msg_to_send, int size_of_message, 
+                         int send_to_self) {
+    int ret;
+    if (send_to_self) {
+    ret = SP_multicast(Mbox, FIFO_MESS, server_group, 0,
+                               size_of_message, (char *) msg_to_send);
+    } else {    
+        ret = SP_multicast(Mbox, (FIFO_MESS | SELF_DISCARD), server_group, 0,
+                               size_of_message, (char *) msg_to_send);
+    }
     if(ret < 0) {
         SP_error(ret);
         Bye();
@@ -903,7 +1044,7 @@ void handle_client_username(update *client_update, char *sender) {
             printf("sending leave to servers in username\n");
         }
         /* Send new leave update to servers */
-        send_server_message(&serv_msg_buff, sizeof(update));
+        send_server_message(&serv_msg_buff, sizeof(update), 0);
 
         /* create new join update, same logic as leave update above */ 
         ((join_payload *)&new_update->payload)->toggle = 1;        
@@ -922,7 +1063,7 @@ void handle_client_username(update *client_update, char *sender) {
             printf("sending join to server in username\n");
         }
         /* Send new leave update to servers */
-        send_server_message(&serv_msg_buff, sizeof(update));
+        send_server_message(&serv_msg_buff, sizeof(update), 0);
         if (DEBUG) printf("local seq: %d\n", local_server_seq);
         if (DEBUG) printf("current seq: %d\n", server_updates_array[process_index]->update->lts.server_seq); 
     }
@@ -1189,13 +1330,27 @@ static void	Read_message() {
 
 	if(Is_regular_mess(service_type)) { // Regular message
         for (int idx = 0; idx < num_groups; idx++) {
-            if (strcmp(target_groups[idx], server_group) == 0) {
+            if (strcmp(target_groups[idx], server_group) == 0
+                && strcmp(sender, User) != 0) {
                 /* The message is from the spread group for servers. */
                 server_message *recv_serv_msg = (server_message *)mess;
                 switch(mess_type) {
                     case 0: // regular update
-                        handle_server_update_bundle(recv_serv_msg,ret);
-                        break;
+                        /* TODO: if (merge_state !=2) run this code, otherwise, queue merge updates */
+                        if (DEBUG) printf("sender: %s\n", sender);
+                        if (check_name_server_equal(sender, User)) {
+                            handle_server_update_bundle(recv_serv_msg,ret);
+                        } else if (merge_state == 2){    
+                            if (DEBUG) printf("received merge message from self\n");
+                            self_received_merge_messages++;
+                            if (self_received_merge_messages 
+                                    == num_servers_responsible_for_in_merge) {
+                                /* sent x messages, received x of them, send more */
+                                burst_merge_messages();
+                                self_received_merge_messages = 0;
+                            }
+                        }
+                       break;
                     case 1:
                         handle_start_merge((int *)(recv_serv_msg->payload), get_group_num_from_name(sender));
                         break;
@@ -1203,9 +1358,9 @@ static void	Read_message() {
             } else if (strcmp(target_groups[idx], personal_group) == 0) {
                 /* The message was sent to the server's personal group (from a client)*/
                 handle_client_message((update *)mess, sender);
-            } else {
-                /* The server should not be receiving regular messages from any other groups
-                 * (i.e. chat room groups) */
+            } else if (strcmp(target_groups[idx], Private_group) == 0) {
+                 /* Assume these messages are from multigroup_multicast */
+                 handle_server_update_bundle((server_message *)mess,ret);
             }
         }	
     } else if(Is_membership_mess(service_type)) {
@@ -1230,28 +1385,37 @@ static void	Read_message() {
                     prev_server_status[idx] = server_status[idx]; 
                     server_status[idx] = 0;
                 }
+                num_new_servers = 0;
                 for (int idx = 0; idx < num_groups; idx++) {
                     server_index = atoi(&(target_groups[idx][SERVER_INDEX_INDEX]));
                     server_status[server_index] = 1;
                     strcpy(server_names[server_index], target_groups[idx]);
                     if (!prev_server_status[server_index]) {
+                        num_new_servers++;
                         merge_case = 1;   
                     }
                 }
-                if (merge_case) {
-                    if(DEBUG) printf("/* TODO Merge!*/\n");
+                if (merge_case || merge_state) {
+                    if(DEBUG) printf("/* initiate Merge!*/\n");
+                    initiate_merge();
                 } else {
                     /* TODO: Someone left. Figure out who by either comparing
                      * prev_server_status and server_status or get memb_info*/
                     for (int idx = 0; idx < num_groups; idx++) {
                         /* If a server status change from 1 to 0 (1-0=1)*/
                         if (prev_server_status[idx] - server_status[idx] == 1) {
-                           handle_leave_of_server(idx); 
+                            if (DEBUG) printf("handle leave of server %d\n", idx);
+                            handle_leave_of_server(idx); 
                         }
                     }
                 }
             } else if (!strcmp(sender, lobby_group) 
                         && check_name_server_equal(memb_info.changed_member, User)) {
+                if (DEBUG) {
+                    printf("handle mem change from lobby group for: %s\n",
+                            memb_info.changed_member);
+                }
+                                
                 /*  checks if memb message is from SELF */
                 /* TODO: change in lobby group. Either someone left or joined. */
                 if (Is_caused_join_mess(service_type)) {
@@ -1298,7 +1462,7 @@ static void Usage(int argc, char *argv[])
     
         /* Set username to same as personal spread group*/
         sprintf( User, personal_group);
-
+        if (DEBUG) printf("User: %s\n", User);
         /* Check number of processes */
         if(num_processes > MAX_MEMBERS) {
             perror("mcast: arguments error - too many processes\n");
