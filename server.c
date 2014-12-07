@@ -1348,8 +1348,9 @@ static void	Read_message() {
                         merge_case = 1;   
                     }
                 }
-                if (merge_case) {
+                if (merge_case || merge_state) {
                     if(DEBUG) printf("/* TODO Merge!*/\n");
+                    initiate_merge();
                 } else {
                     /* TODO: Someone left. Figure out who by either comparing
                      * prev_server_status and server_status or get memb_info*/
