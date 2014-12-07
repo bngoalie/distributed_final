@@ -44,7 +44,8 @@ update_node *update_list_tail;
 update_node *server_updates_array[MAX_MEMBERS];
 server_message serv_msg_buff;
 update sending_update_buff;
-update_node *client_update_queue;
+update_node *client_update_queue_head;
+update_node *client_update_queue_tail;
 char        server_names[MAX_MEMBERS][MAX_GROUP_NAME];
 int         server_status[MAX_MEMBERS];
 int         prev_server_status[MAX_MEMBERS];
@@ -77,6 +78,9 @@ int main(int argc, char *argv[]) {
     update_list_head.next = NULL;
     update_list_tail = &update_list_head;   
 
+    client_update_queue_head = NULL;
+    client_update_queue_tail = NULL;
+    
     merge_state = 0;
     
     expected_completion_mask = 0;
@@ -742,7 +746,21 @@ void initiate_merge() {
 
 void handle_client_message(update *client_update, char *sender) {
     if (merge_state == 1) {
-
+        /* We are in the middle of a merge. queue up the client update */
+        update_node *new_update_node = NULL;
+        if ((new_update_node = malloc(sizeof(update_node))) == NULL
+            || (new_update_node->update = malloc(sizeof(update))) == NULL) {
+            perror("error mallocing update or node for queueing client update\n");
+            Bye();
+        }
+        new_update_node->next = NULL;
+        memcpy(new_update_node->update, client_update, sizeof(update));
+        if (client_update_queue_tail == NULL) {
+            client_update_queue_head = new_update_node;
+        } else {
+            client_update_queue_tail->next = new_update_node;
+        }
+        client_update_queue_tail = new_update_node;
     }
     /* Check if have client */
     client_node *client_itr = &(room_list_head.client_heads[process_index]);
